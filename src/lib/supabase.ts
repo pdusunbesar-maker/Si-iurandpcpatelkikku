@@ -272,7 +272,7 @@ export async function pushAllDataToSupabase(data: {
       amount: d.amount,
       updated_at: toIsoTimestamp(d.updatedAt),
     }));
-    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 100);
+    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 20);
 
     // 3. Payment submissions
     const submissionsPayload = data.paymentSubmissions.map(s => ({
