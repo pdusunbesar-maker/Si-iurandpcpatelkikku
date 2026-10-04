@@ -32,6 +32,7 @@ import {
   subscribeToSupabaseRealtime,
   SupabaseConfig,
   deleteFromSupabase,
+  deleteMemberFromSupabase,
   clearTableFromSupabase,
   upsertToSupabase,
 } from '../lib/supabase';
@@ -474,13 +475,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteMember = (id: string) => {
+    const memberToDelete = members.find(m => m.id === id);
     setMembers(prev => prev.filter(m => m.id !== id));
     setDuesRecords(prev => prev.filter(d => d.memberId !== id));
     
-    // Sync deletion to Supabase
-    deleteFromSupabase('members', 'id', id).catch(console.error);
-    // Note: Dues records for member are automatically deleted in Supabase 
-    // if cascade delete is enabled, otherwise we might need a specific delete.
+    // Sync permanent deletion to Supabase (including child dues_records and submissions)
+    deleteMemberFromSupabase(id, memberToDelete?.nap).catch(err => {
+      console.error('Gagal menghapus anggota dari Supabase:', err);
+    });
   };
 
   const toggleMemberStatus = (id: string) => {

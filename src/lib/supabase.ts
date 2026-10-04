@@ -294,6 +294,54 @@ export async function deleteFromSupabase(
   }
 }
 
+/**
+ * Menghapus anggota beserta seluruh relasi iuran & pengajuan secara permanen dari Supabase.
+ */
+export async function deleteMemberFromSupabase(
+  memberId: string,
+  memberNap?: string
+): Promise<{ success: boolean; message: string }> {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    return { success: false, message: 'Supabase belum dikonfigurasi!' };
+  }
+
+  const client = createClient(url, key, { auth: { persistSession: false } });
+
+  try {
+    // 1. Dapatkan semua ID terkait di Supabase (berdasarkan ID atau NAP)
+    let targetIds: string[] = [memberId];
+    if (memberNap) {
+      const { data: foundMembers } = await client
+        .from('members')
+        .select('id')
+        .or(`id.eq.${memberId},nap.eq.${memberNap}`);
+      if (foundMembers && foundMembers.length > 0) {
+        targetIds = Array.from(new Set([...targetIds, ...foundMembers.map((m: any) => m.id)]));
+      }
+    }
+
+    // 2. Hapus data relasi anak terlebih dahulu agar tidak terkendala foreign key
+    await client.from('dues_records').delete().in('member_id', targetIds);
+    await client.from('payment_submissions').delete().in('member_id', targetIds);
+
+    // 3. Hapus data induk anggota
+    const { error: errM } = await client.from('members').delete().in('id', targetIds);
+    if (errM) {
+      throw new Error(`members: ${errM.message}`);
+    }
+
+    if (memberNap) {
+      await client.from('members').delete().eq('nap', memberNap);
+    }
+
+    return { success: true, message: 'Anggota dan seluruh data iurannya berhasil dihapus permanen dari Supabase' };
+  } catch (error: any) {
+    console.error('Error deleting member from Supabase:', error);
+    return { success: false, message: `Gagal menghapus anggota: ${error.message}` };
+  }
+}
+
 export async function clearTableFromSupabase(table: string): Promise<{ success: boolean; message: string }> {
   const { url, key } = getSupabaseConfig();
   if (!url || !key) {
@@ -512,9 +560,77 @@ export async function pushAllDataToSupabase(data: {
     };
     await upsertInChunks(client, 'app_settings', [settingsPayload], 'id', 1);
 
+    // ==============================================================
+    // 9. RECONCILIATION: HAPUS PERMANEN DATA SUPABASE YG SUDAH DIHAPUS DI APLIKASI
+    // ==============================================================
+    try {
+      // A. Reconcile Anggota yang telah dihapus
+      const { data: allRemoteMembers } = await client.from('members').select('id, nap');
+      if (allRemoteMembers && allRemoteMembers.length > 0) {
+        const localNaps = new Set(data.members.map(m => m.nap));
+        const localIds = new Set(data.members.map(m => m.id));
+
+        const membersToDelete = allRemoteMembers.filter(
+          (rm: any) => !localNaps.has(rm.nap) && !localIds.has(rm.id)
+        );
+
+        if (membersToDelete.length > 0) {
+          const targetDelIds = membersToDelete.map((rm: any) => rm.id);
+          // Hapus anak relasi iuran dan pengajuan terlebih dahulu
+          await client.from('dues_records').delete().in('member_id', targetDelIds);
+          await client.from('payment_submissions').delete().in('member_id', targetDelIds);
+          await client.from('members').delete().in('id', targetDelIds);
+        }
+      }
+
+      // B. Reconcile Transaksi Kas yang telah dihapus
+      const { data: allRemoteTx } = await client.from('cash_transactions').select('id');
+      if (allRemoteTx && allRemoteTx.length > 0) {
+        const localTxIds = new Set(data.transactions.map(t => t.id));
+        const txToDelete = allRemoteTx.filter((rt: any) => !localTxIds.has(rt.id)).map((rt: any) => rt.id);
+        if (txToDelete.length > 0) {
+          for (let i = 0; i < txToDelete.length; i += 100) {
+            await client.from('cash_transactions').delete().in('id', txToDelete.slice(i, i + 100));
+          }
+        }
+      }
+
+      // C. Reconcile Donasi yang telah dihapus
+      const { data: allRemoteDon } = await client.from('donations').select('id');
+      if (allRemoteDon && allRemoteDon.length > 0) {
+        const localDonIds = new Set(data.donations.map(d => d.id));
+        const donToDelete = allRemoteDon.filter((rd: any) => !localDonIds.has(rd.id)).map((rd: any) => rd.id);
+        if (donToDelete.length > 0) {
+          await client.from('donations').delete().in('id', donToDelete);
+        }
+      }
+
+      // D. Reconcile Bakti Sosial yang telah dihapus
+      const { data: allRemoteSoc } = await client.from('social_services').select('id');
+      if (allRemoteSoc && allRemoteSoc.length > 0) {
+        const localSocIds = new Set(data.socialServices.map(s => s.id));
+        const socToDelete = allRemoteSoc.filter((rs: any) => !localSocIds.has(rs.id)).map((rs: any) => rs.id);
+        if (socToDelete.length > 0) {
+          await client.from('social_services').delete().in('id', socToDelete);
+        }
+      }
+
+      // E. Reconcile Rekening Bank yang telah dihapus
+      const { data: allRemoteBanks } = await client.from('bank_accounts').select('id');
+      if (allRemoteBanks && allRemoteBanks.length > 0) {
+        const localBankIds = new Set(data.bankAccounts.map(b => b.id));
+        const banksToDelete = allRemoteBanks.filter((rb: any) => !localBankIds.has(rb.id)).map((rb: any) => rb.id);
+        if (banksToDelete.length > 0) {
+          await client.from('bank_accounts').delete().in('id', banksToDelete);
+        }
+      }
+    } catch (recErr) {
+      console.warn('Non-critical warning on reconciliation deletions:', recErr);
+    }
+
     return {
       success: true,
-      message: `Semua data (${data.members.length} anggota, ${data.transactions.length} transaksi kas, ${data.duesRecords.length} iuran) berhasil diunggah ke Supabase!`,
+      message: `Semua data (${data.members.length} anggota, ${data.transactions.length} transaksi kas, ${data.duesRecords.length} iuran) berhasil disinkronkan dan data terhapus dibersihkan dari Supabase!`,
     };
   } catch (error: any) {
     console.error('Error uploading to Supabase:', error);
