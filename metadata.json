@@ -1,0 +1,6 @@
+{
+  "name": "SI-IURAN Patelki DPC Kayong Utara",
+  "description": "Sistem Informasi Iuran & Keuangan Organisasi Profesi DPC Patelki Kayong Utara",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

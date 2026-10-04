@@ -1,0 +1,31 @@
+<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer Green Circle Ring -->
+  <circle cx="256" cy="256" r="216" stroke="#008C45" stroke-width="34"/>
+
+  <!-- Microscope Body & Triangular Frame -->
+  <!-- Left to Upper-Right Continuous Beam -->
+  <polygon points="106,368 144,368 360,18 322,18" fill="#008C45"/>
+
+  <!-- Upper-Right Extended Diagonal Tube with Dual Stripes -->
+  <!-- Main upper tube -->
+  <polygon points="318,34 356,34 382,2 344,2" fill="#008C45"/>
+  
+  <!-- Right Parallel Stripe on Tube -->
+  <polygon points="370,105 386,105 428,2 412,2" fill="#008C45"/>
+  
+  <!-- Right Diagonal Leg of Triangle -->
+  <polygon points="252,230 290,230 406,368 368,368" fill="#008C45"/>
+
+  <!-- Bottom Horizontal Segments (Left & Right) with Central Opening -->
+  <polygon points="106,336 156,336 156,368 106,368" fill="#008C45"/>
+  <polygon points="356,336 406,336 406,368 356,368" fill="#008C45"/>
+
+  <!-- Microscope Lens Knob / Adjustment Disc -->
+  <!-- Outer Green Ring with White Disc -->
+  <circle cx="310" cy="148" r="42" fill="#FFFFFF" stroke="#008C45" stroke-width="16"/>
+  <!-- Inner Solid Green Lens -->
+  <circle cx="310" cy="148" r="18" fill="#008C45"/>
+
+  <!-- Official PATELKI Bold Typography at Base -->
+  <text x="256" y="424" text-anchor="middle" fill="#000000" font-family="-apple-system, BlinkMacSystemFont, 'Arial Black', 'Montserrat', Impact, 'Segoe UI', sans-serif" font-weight="900" font-size="54" letter-spacing="2.5">PATELKI</text>
+</svg>
