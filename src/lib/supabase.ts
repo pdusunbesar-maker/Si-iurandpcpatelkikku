@@ -180,6 +180,14 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
   }
 }
 
+function safeImagePayload(url?: string | null): string | null {
+  if (!url) return null;
+  if (typeof url === 'string' && url.startsWith('data:') && url.length > 500000) {
+    return null;
+  }
+  return url;
+}
+
 function toIsoTimestamp(val: any): string {
   if (!val) return new Date().toISOString();
   if (typeof val === 'string' && (val.includes('T') || val.includes('-')) && !val.includes(',')) {
@@ -194,6 +202,25 @@ function toIsoTimestamp(val: any): string {
     }
   } catch {}
   return new Date().toISOString();
+}
+
+async function upsertInChunks(
+  client: SupabaseClient,
+  table: string,
+  data: any[],
+  onConflict: string,
+  chunkSize: number = 100
+) {
+  if (!data || data.length === 0) return;
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, i + chunkSize);
+    const { error } = await client.from(table).upsert(chunk as any, { onConflict });
+    if (error) {
+      throw new Error(`Tabel ${table}: ${error.message}`);
+    }
+    // Add small delay to stabilize connection
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
 }
 
 // ==========================================
@@ -225,7 +252,7 @@ export async function pushAllDataToSupabase(data: {
       instansi: m.instansi,
       jabatan: m.jabatan || '',
       status: m.status,
-      foto: m.foto || null,
+      foto: safeImagePayload(m.foto),
       tanggal_bergabung: m.tanggalBergabung,
       email: m.email || null,
       alamat: m.alamat || null,
@@ -233,10 +260,9 @@ export async function pushAllDataToSupabase(data: {
       password: m.password || '123456',
       pin: m.pin || null,
     }));
-    const { error: errMembers } = await client.from('members').upsert(membersPayload, { onConflict: 'id' });
-    if (errMembers) throw new Error(`Tabel members: ${errMembers.message}`);
+    await upsertInChunks(client, 'members', membersPayload, 'id', 20);
 
-    // 2. Dues records
+    // 2. Dues records (batch 100 for large lists)
     const duesPayload = data.duesRecords.map(d => ({
       member_id: d.memberId,
       year: d.year,
@@ -246,8 +272,7 @@ export async function pushAllDataToSupabase(data: {
       amount: d.amount,
       updated_at: toIsoTimestamp(d.updatedAt),
     }));
-    const { error: errDues } = await client.from('dues_records').upsert(duesPayload, { onConflict: 'member_id,year,month' });
-    if (errDues) throw new Error(`Tabel dues_records: ${errDues.message}`);
+    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 100);
 
     // 3. Payment submissions
     const submissionsPayload = data.paymentSubmissions.map(s => ({
@@ -262,7 +287,7 @@ export async function pushAllDataToSupabase(data: {
       bank_account_id: s.bankAccountId,
       bank_name: s.bankName,
       account_number: s.accountNumber,
-      proof_url: s.proofUrl,
+      proof_url: safeImagePayload(s.proofUrl) || s.proofUrl,
       proof_name: s.proofName || null,
       status: s.status,
       submitted_at: toIsoTimestamp(s.submittedAt),
@@ -271,8 +296,7 @@ export async function pushAllDataToSupabase(data: {
       rejection_reason: s.rejectionReason || null,
       notes: s.notes || null,
     }));
-    const { error: errSub } = await client.from('payment_submissions').upsert(submissionsPayload, { onConflict: 'id' });
-    if (errSub) throw new Error(`Tabel payment_submissions: ${errSub.message}`);
+    await upsertInChunks(client, 'payment_submissions', submissionsPayload, 'id', 100);
 
     // 4. Cash Transactions
     const txPayload = data.transactions.map(t => ({
@@ -284,13 +308,12 @@ export async function pushAllDataToSupabase(data: {
       source_or_recipient: t.sourceOrRecipient,
       amount: t.amount,
       description: t.description,
-      proof_url: t.proofUrl || null,
+      proof_url: safeImagePayload(t.proofUrl) || t.proofUrl || null,
       related_payment_id: t.relatedPaymentId || null,
       recorded_by: t.recordedBy || null,
       created_at: toIsoTimestamp(t.createdAt),
     }));
-    const { error: errTx } = await client.from('cash_transactions').upsert(txPayload, { onConflict: 'id' });
-    if (errTx) throw new Error(`Tabel cash_transactions: ${errTx.message}`);
+    await upsertInChunks(client, 'cash_transactions', txPayload, 'id', 100);
 
     // 5. Donations
     const donPayload = data.donations.map(dn => ({
@@ -302,11 +325,10 @@ export async function pushAllDataToSupabase(data: {
       type: dn.type,
       purpose: dn.purpose,
       description: dn.description,
-      proof_url: dn.proofUrl || null,
+      proof_url: safeImagePayload(dn.proofUrl) || dn.proofUrl || null,
       created_at: toIsoTimestamp(dn.createdAt),
     }));
-    const { error: errDon } = await client.from('donations').upsert(donPayload, { onConflict: 'id' });
-    if (errDon) throw new Error(`Tabel donations: ${errDon.message}`);
+    await upsertInChunks(client, 'donations', donPayload, 'id', 100);
 
     // 6. Social Services
     const socPayload = data.socialServices.map(sc => ({
@@ -323,8 +345,7 @@ export async function pushAllDataToSupabase(data: {
       expenses: sc.expenses || [],
       created_at: toIsoTimestamp(sc.createdAt),
     }));
-    const { error: errSoc } = await client.from('social_services').upsert(socPayload, { onConflict: 'id' });
-    if (errSoc) throw new Error(`Tabel social_services: ${errSoc.message}`);
+    await upsertInChunks(client, 'social_services', socPayload, 'id', 50);
 
     // 7. Bank Accounts
     const bankPayload = data.bankAccounts.map(b => ({
@@ -337,8 +358,7 @@ export async function pushAllDataToSupabase(data: {
       notes: b.notes || null,
       qris_url: b.qrisUrl || null,
     }));
-    const { error: errBank } = await client.from('bank_accounts').upsert(bankPayload, { onConflict: 'id' });
-    if (errBank) throw new Error(`Tabel bank_accounts: ${errBank.message}`);
+    await upsertInChunks(client, 'bank_accounts', bankPayload, 'id', 50);
 
     // 8. Settings
     const settingsPayload = {
@@ -364,8 +384,7 @@ export async function pushAllDataToSupabase(data: {
       wa_template_rejected: data.settings.waTemplateRejected,
       updated_at: new Date().toISOString(),
     };
-    const { error: errSet } = await client.from('app_settings').upsert([settingsPayload], { onConflict: 'id' });
-    if (errSet) throw new Error(`Tabel app_settings: ${errSet.message}`);
+    await upsertInChunks(client, 'app_settings', [settingsPayload], 'id', 1);
 
     return {
       success: true,
@@ -373,7 +392,10 @@ export async function pushAllDataToSupabase(data: {
     };
   } catch (error: any) {
     console.error('Error uploading to Supabase:', error);
-    return { success: false, message: `Gagal mengunggah data: ${error.message || 'Terjadi kesalahan'}` };
+    const msg = error.message?.includes('Failed to fetch') || error?.name === 'TypeError'
+      ? 'Gagal terhubung ke server Supabase. Periksa koneksi internet atau ketersediaan URL & API Key Supabase Anda.'
+      : error.message || 'Terjadi kesalahan saat upload';
+    return { success: false, message: `Gagal mengunggah data: ${msg}` };
   }
 }
 
