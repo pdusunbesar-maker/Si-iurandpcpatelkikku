@@ -31,6 +31,7 @@ import {
   pullAllDataFromSupabase,
   subscribeToSupabaseRealtime,
   SupabaseConfig,
+  deleteFromSupabase,
 } from '../lib/supabase';
 
 interface AppContextType {
@@ -473,6 +474,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteMember = (id: string) => {
     setMembers(prev => prev.filter(m => m.id !== id));
     setDuesRecords(prev => prev.filter(d => d.memberId !== id));
+    
+    // Sync deletion to Supabase
+    deleteFromSupabase('members', 'id', id).catch(console.error);
+    // Note: Dues records for member are automatically deleted in Supabase 
+    // if cascade delete is enabled, otherwise we might need a specific delete.
   };
 
   const toggleMemberStatus = (id: string) => {
@@ -742,6 +748,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteTransaction = (id: string) => {
     setTransactions(prev => prev.filter(t => t.id !== id));
+    deleteFromSupabase('cash_transactions', 'id', id).catch(console.error);
   };
 
   // Donations
@@ -768,6 +775,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteDonation = (id: string) => {
     setDonations(prev => prev.filter(d => d.id !== id));
+    deleteFromSupabase('donations', 'id', id).catch(console.error);
   };
 
   // Social Services
@@ -796,6 +804,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteSocialService = (id: string) => {
     setSocialServices(prev => prev.filter(s => s.id !== id));
+    deleteFromSupabase('social_services', 'id', id).catch(console.error);
   };
 
   // Bank Accounts
@@ -810,6 +819,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteBankAccount = (id: string) => {
     setBankAccounts(prev => prev.filter(b => b.id !== id));
+    deleteFromSupabase('bank_accounts', 'id', id).catch(console.error);
   };
 
   // Settings

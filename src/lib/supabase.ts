@@ -223,6 +223,31 @@ async function upsertInChunks(
   }
 }
 
+/**
+ * Menghapus record dari Supabase berdasarkan ID atau field tertentu.
+ */
+export async function deleteFromSupabase(
+  table: string,
+  field: string,
+  value: any
+): Promise<{ success: boolean; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Supabase belum dikonfigurasi!' };
+  }
+
+  try {
+    const { error } = await client.from(table).delete().eq(field, value);
+    if (error) {
+      throw new Error(`Tabel ${table}: ${error.message}`);
+    }
+    return { success: true, message: 'Data berhasil dihapus dari Supabase' };
+  } catch (error: any) {
+    console.error('Error deleting from Supabase:', error);
+    return { success: false, message: `Gagal menghapus data: ${error.message}` };
+  }
+}
+
 // ==========================================
 // PUSH / UPLOAD SEMUA DATA LOKAL KE SUPABASE
 // ==========================================
@@ -260,7 +285,7 @@ export async function pushAllDataToSupabase(data: {
       password: m.password || '123456',
       pin: m.pin || null,
     }));
-    await upsertInChunks(client, 'members', membersPayload, 'id', 20);
+    await upsertInChunks(client, 'members', membersPayload, 'id', 10);
 
     // 2. Dues records (batch 100 for large lists)
     const duesPayload = data.duesRecords.map(d => ({
