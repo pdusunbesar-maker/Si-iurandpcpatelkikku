@@ -867,6 +867,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     }
+
+    // Auto-sync settings to Supabase if configured
+    if (isSupabaseActive) {
+      syncUploadToSupabase().catch(console.error);
+    }
   };
 
   // Keep Bendahara name & NAP strictly synchronized with settings

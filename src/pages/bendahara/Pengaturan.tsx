@@ -27,6 +27,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Code2,
+  Phone,
+  MessageSquare,
+  Send,
 } from 'lucide-react';
 import { SUPABASE_SCHEMA_SQL } from '../../data/supabaseSchemaSql';
 import { PhotoUploader } from '../../components/PhotoUploader';
@@ -57,6 +60,35 @@ export const Pengaturan: React.FC = () => {
 
   const [settingsForm, setSettingsForm] = useState(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [waSavedSuccess, setWaSavedSuccess] = useState(false);
+
+  // Sync settingsForm if settings change externally
+  React.useEffect(() => {
+    setSettingsForm(settings);
+  }, [settings]);
+
+  const handleSaveWaNumber = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    let cleanWa = settingsForm.contactWa.replace(/[^0-9]/g, '');
+    if (cleanWa.startsWith('0')) {
+      cleanWa = '62' + cleanWa.substring(1);
+    }
+    const updated = { ...settingsForm, contactWa: cleanWa };
+    setSettingsForm(updated);
+    updateSettings({ contactWa: cleanWa });
+    setWaSavedSuccess(true);
+    setTimeout(() => setWaSavedSuccess(false), 2500);
+  };
+
+  const handleTestWa = () => {
+    let cleanWa = settingsForm.contactWa.replace(/[^0-9]/g, '');
+    if (cleanWa.startsWith('0')) {
+      cleanWa = '62' + cleanWa.substring(1);
+    }
+    const testMsg = `Halo Bendahara DPC PATELKI Kayong Utara,\n\nIni adalah pesan uji coba tautan konfirmasi pembayaran iuran. Nomor WhatsApp ini (${cleanWa}) telah terhubung dengan benar ke aplikasi!`;
+    const url = `https://wa.me/${cleanWa}?text=${encodeURIComponent(testMsg)}`;
+    window.open(url, '_blank');
+  };
 
   // Treasurer Member and Photo
   const treasurerMember = members.find(m => m.id === currentMember?.id || m.jabatan?.toLowerCase().includes('bendahara')) || members[0];
@@ -528,15 +560,86 @@ export const Pengaturan: React.FC = () => {
         </div>
       </form>
 
+      {/* 2.5 Dedicated WhatsApp Konfirmasi Pembayaran Setting Card */}
+      <div className="bg-linear-to-r from-emerald-900 via-emerald-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-emerald-700/50 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-emerald-700/50">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 shadow-inner">
+              <MessageSquare className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-white">
+                  Nomor WhatsApp Konfirmasi Pembayaran
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
+                  Tujuan Otomatis Anggota
+                </span>
+              </div>
+              <p className="text-xs text-emerald-200/80 mt-0.5">
+                Nomor WhatsApp Bendahara yang langsung dihubungi oleh anggota saat selesai mengirim bukti pembayaran.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTestWa}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-700/70 hover:bg-emerald-600/90 text-white rounded-xl text-xs font-bold border border-emerald-500/40 transition-all cursor-pointer shrink-0"
+            title="Kirim pesan tes ke nomor ini via WhatsApp"
+          >
+            <Send className="w-3.5 h-3.5" />
+            Uji Coba Hubungi No Ini
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="block text-xs font-bold text-emerald-100">
+              Nomor WhatsApp Bendahara (Format: 08... atau 628...) *
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-400">
+                <Phone className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                value={settingsForm.contactWa}
+                onChange={e => setSettingsForm({ ...settingsForm, contactWa: e.target.value })}
+                placeholder="Contoh: 081256789001 atau 6281256789001"
+                className="w-full pl-10 pr-4 py-3 rounded-2xl bg-emerald-950/60 border border-emerald-600/60 text-white font-mono font-bold text-sm outline-hidden focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+              />
+            </div>
+            <p className="text-[11px] text-emerald-300/80">
+              💡 Nomor ini akan otomatis diawali kode negara <code>62</code> saat tautan WhatsApp dibuka oleh anggota.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => handleSaveWaNumber()}
+              className="w-full py-3 px-5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            >
+              {waSavedSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {waSavedSuccess ? 'Nomor WA Tersimpan!' : 'Simpan Nomor WhatsApp'}
+            </button>
+            <span className="text-[10px] text-center text-emerald-200/70">
+              Tersimpan langsung & otomatis tersinkron ke Supabase.
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* 3. General Settings Form */}
       <form onSubmit={handleSaveSettings} className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
         <div>
           <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
             <Settings className="w-5 h-5 text-amber-500" />
-            Parameter Iuran & Pejabat DPC
+            Parameter Iuran, Kontak & Pejabat DPC
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tarif iuran bulanan dan nama pejabat yang tertera pada kuitansi dan laporan transparansi.
+            Tarif iuran bulanan, kontak resmi organisasi, dan nama pejabat yang tertera pada kuitansi dan laporan transparansi.
           </p>
         </div>
 
@@ -584,7 +687,64 @@ export const Pengaturan: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
+        {/* Contact Info & Office Address */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs pt-4 border-t border-slate-100">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Nomor WhatsApp Resmi Bendahara (Konfirmasi Pembayaran) *
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Phone className="w-4 h-4" />
+              </div>
+              <input
+                type="text"
+                required
+                value={settingsForm.contactWa}
+                onChange={e => setSettingsForm({ ...settingsForm, contactWa: e.target.value })}
+                placeholder="Contoh: 081256789001"
+                className="w-full pl-9 p-2.5 rounded-xl border border-slate-300 font-mono font-bold text-slate-900 outline-hidden"
+              />
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Anggota yang membayar akan otomatis dialihkan ke nomor WhatsApp ini.
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              Email Resmi DPC PATELKI
+            </label>
+            <input
+              type="email"
+              value={settingsForm.contactEmail}
+              onChange={e => setSettingsForm({ ...settingsForm, contactEmail: e.target.value })}
+              placeholder="Contoh: dpcpatelki.kayongutara@gmail.com"
+              className="w-full p-2.5 rounded-xl border border-slate-300 outline-hidden"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Tertera di kop surat kuitansi dan dokumen resmi.
+            </p>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block font-bold text-slate-700 mb-1">
+              Alamat Sekretariat DPC PATELKI
+            </label>
+            <input
+              type="text"
+              value={settingsForm.address}
+              onChange={e => setSettingsForm({ ...settingsForm, address: e.target.value })}
+              placeholder="Contoh: Sekretariat DPC Patelki KKU, Jl. Bhayangkara No. 04, Sukadana"
+              className="w-full p-2.5 rounded-xl border border-slate-300 outline-hidden"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Alamat lengkap yang tercetak di kop kuitansi iuran sah.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs pt-4 border-t border-slate-100">
           <div>
             <label className="block font-bold text-slate-700 mb-1">
               Nama Ketua DPC & NAP *
