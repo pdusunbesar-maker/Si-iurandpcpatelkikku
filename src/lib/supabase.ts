@@ -251,6 +251,27 @@ export async function deleteFromSupabase(
   }
 }
 
+export async function clearTableFromSupabase(table: string): Promise<{ success: boolean; message: string }> {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    return { success: false, message: 'Supabase belum dikonfigurasi!' };
+  }
+
+  const client = createClient(url, key, { auth: { persistSession: false } });
+
+  try {
+    // Delete all records in the table
+    const { error } = await client.from(table).delete().neq('id', 'non-existent-id-1234567890');
+    if (error) {
+      throw new Error(`Tabel ${table}: ${error.message}`);
+    }
+    return { success: true, message: `Tabel ${table} berhasil dibersihkan.` };
+  } catch (error: any) {
+    console.error(`Error clearing table ${table} in Supabase:`, error);
+    return { success: false, message: `Gagal membersihkan tabel ${table}: ${error.message}` };
+  }
+}
+
 // ==========================================
 // PUSH / UPLOAD SEMUA DATA LOKAL KE SUPABASE
 // ==========================================
@@ -288,7 +309,7 @@ export async function pushAllDataToSupabase(data: {
       password: m.password || '123456',
       pin: m.pin || null,
     }));
-    await upsertInChunks(client, 'members', membersPayload, 'id', 10);
+    await upsertInChunks(client, 'members', membersPayload, 'nap', 10);
 
     // 2. Dues records (batch 100 for large lists)
     const duesPayload = data.duesRecords.map(d => ({

@@ -32,6 +32,7 @@ import {
   subscribeToSupabaseRealtime,
   SupabaseConfig,
   deleteFromSupabase,
+  clearTableFromSupabase,
 } from '../lib/supabase';
 
 interface AppContextType {
@@ -118,7 +119,7 @@ interface AppContextType {
   }[];
   formatCurrency: (amount: number) => string;
   generateWhatsAppLink: (phone: string, text: string) => string;
-  resetAllDataToDefault: () => void;
+  resetAllDataToDefault: () => Promise<void>;
 
   // Supabase Database Integration
   isSupabaseActive: boolean;
@@ -988,19 +989,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(text)}`;
   };
 
-  const resetAllDataToDefault = () => {
+  const resetAllDataToDefault = async () => {
     localStorage.clear();
-    setMembers(INITIAL_MEMBERS);
-    setDuesRecords(generateInitialDues());
-    setPaymentSubmissions(INITIAL_PAYMENT_SUBMISSIONS);
-    setTransactions(INITIAL_TRANSACTIONS);
-    setDonations(INITIAL_DONATIONS);
-    setSocialServices(INITIAL_SOCIAL_SERVICES);
-    setBankAccounts(INITIAL_BANK_ACCOUNTS);
-    setSettings(INITIAL_SETTINGS);
-    setNotifications(INITIAL_NOTIFICATIONS);
+    setMembers([]);
+    setDuesRecords([]);
+    setPaymentSubmissions([]);
+    setTransactions([]);
+    setDonations([]);
+    setSocialServices([]);
+    setBankAccounts([]);
+    setSettings({
+      organizationName: 'Organisasi Baru',
+      monthlyFee: 0,
+      startYear: new Date().getFullYear(),
+      endYear: new Date().getFullYear(),
+    } as AppSettings);
+    setNotifications([]);
     setCurrentUserRole('bendahara');
-    setCurrentMember(INITIAL_MEMBERS[0]);
+    setCurrentMember(null);
+
+    // Clear supabase
+    if (isSupabaseActive) {
+      const tables = [
+        'members',
+        'dues_records',
+        'payment_submissions',
+        'cash_transactions',
+        'donations',
+        'social_services',
+        'bank_accounts',
+        'app_settings',
+      ];
+      for (const table of tables) {
+        await clearTableFromSupabase(table);
+      }
+    }
+    
+    // Force reload to apply clean state
+    window.location.reload();
   };
 
   // Supabase Database Action Handlers
