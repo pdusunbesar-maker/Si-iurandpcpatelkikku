@@ -29,6 +29,7 @@ import {
   testSupabaseConnection,
   pushAllDataToSupabase,
   pullAllDataFromSupabase,
+  subscribeToSupabaseRealtime,
   SupabaseConfig,
 } from '../lib/supabase';
 
@@ -207,6 +208,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
   }, []);
+
+  // Real-time sync subscription across users/devices
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const unsubscribe = subscribeToSupabaseRealtime(() => {
+      pullAllDataFromSupabase().then(res => {
+        if (res.success && res.data) {
+          if (res.data.members?.length > 0) setMembers(res.data.members);
+          if (res.data.duesRecords?.length > 0) setDuesRecords(res.data.duesRecords);
+          if (res.data.paymentSubmissions?.length > 0) setPaymentSubmissions(res.data.paymentSubmissions);
+          if (res.data.transactions?.length > 0) setTransactions(res.data.transactions);
+          if (res.data.donations?.length > 0) setDonations(res.data.donations);
+          if (res.data.socialServices?.length > 0) setSocialServices(res.data.socialServices);
+          if (res.data.bankAccounts?.length > 0) setBankAccounts(res.data.bankAccounts);
+          if (res.data.settings) setSettings(res.data.settings);
+          setIsSupabaseActive(true);
+        }
+      }).catch(err => {
+        console.warn('Realtime sync pull error:', err);
+      });
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isSupabaseActive]);
+
+  // Auto-sync push to Supabase on data changes (debounced)
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !supabaseConfig.autoSync) return;
+
+    const timer = setTimeout(() => {
+      pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(err => {
+        console.warn('Auto-sync upload warning:', err);
+      });
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [members, duesRecords, paymentSubmissions, transactions, donations, socialServices, bankAccounts, settings, supabaseConfig.autoSync]);
 
   // Auth & Session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {

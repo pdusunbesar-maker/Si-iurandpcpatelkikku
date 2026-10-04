@@ -146,16 +146,23 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
           correctedUrl: testUrl,
         };
       }
-      if (error.code === 'PGRST301' || error.message?.includes('JWT') || error.message?.includes('apikey')) {
+      if (
+        error.code === 'PGRST301' ||
+        error.message?.includes('JWT') ||
+        error.message?.includes('apikey') ||
+        error.message?.includes('Invalid API key') ||
+        error.message?.includes('Unauthorized') ||
+        (error as any).status === 401
+      ) {
         return {
           success: false,
-          message: `Koneksi ditolak: API Key (anon key) tidak valid. Pastikan menyalin kunci "anon / public" dari Project Settings > API pada Supabase.`,
+          message: `Koneksi ditolak: API Key (anon key) atau URL Supabase tidak valid. Pastikan menyalin kunci "anon / public" yang benar dari Project Settings > API pada Supabase.`,
           correctedUrl: testUrl,
         };
       }
       return {
         success: false,
-        message: `Koneksi gagal: ${error.message} (Kode: ${error.code || 'UNKNOWN'})`,
+        message: `Koneksi gagal: ${error.message} (Kode: ${error.code || 'UNKNOWN'}). Pastikan URL Project dan Anon API Key Supabase Anda sudah benar.`,
         correctedUrl: testUrl,
       };
     }
@@ -166,8 +173,27 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
       correctedUrl: testUrl,
     };
   } catch (err: any) {
-    return { success: false, message: `Error koneksi: ${err.message || 'Tidak dapat terhubung'}` };
+    return {
+      success: false,
+      message: `Gagal terhubung ke server Supabase: ${err.message || 'Periksa kembali URL Project Supabase atau koneksi internet Anda.'}`,
+    };
   }
+}
+
+function toIsoTimestamp(val: any): string {
+  if (!val) return new Date().toISOString();
+  if (typeof val === 'string' && (val.includes('T') || val.includes('-')) && !val.includes(',')) {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+  try {
+    const cleaned = String(val).replace(/\./g, ':');
+    const d = new Date(cleaned);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString();
+    }
+  } catch {}
+  return new Date().toISOString();
 }
 
 // ==========================================
@@ -218,7 +244,7 @@ export async function pushAllDataToSupabase(data: {
       status: d.status,
       payment_id: d.paymentId || null,
       amount: d.amount,
-      updated_at: d.updatedAt || new Date().toISOString(),
+      updated_at: toIsoTimestamp(d.updatedAt),
     }));
     const { error: errDues } = await client.from('dues_records').upsert(duesPayload, { onConflict: 'member_id,year,month' });
     if (errDues) throw new Error(`Tabel dues_records: ${errDues.message}`);
@@ -239,8 +265,8 @@ export async function pushAllDataToSupabase(data: {
       proof_url: s.proofUrl,
       proof_name: s.proofName || null,
       status: s.status,
-      submitted_at: s.submittedAt,
-      verified_at: s.verifiedAt || null,
+      submitted_at: toIsoTimestamp(s.submittedAt),
+      verified_at: s.verifiedAt ? toIsoTimestamp(s.verifiedAt) : null,
       verified_by: s.verifiedBy || null,
       rejection_reason: s.rejectionReason || null,
       notes: s.notes || null,
@@ -261,7 +287,7 @@ export async function pushAllDataToSupabase(data: {
       proof_url: t.proofUrl || null,
       related_payment_id: t.relatedPaymentId || null,
       recorded_by: t.recordedBy || null,
-      created_at: t.createdAt,
+      created_at: toIsoTimestamp(t.createdAt),
     }));
     const { error: errTx } = await client.from('cash_transactions').upsert(txPayload, { onConflict: 'id' });
     if (errTx) throw new Error(`Tabel cash_transactions: ${errTx.message}`);
@@ -277,7 +303,7 @@ export async function pushAllDataToSupabase(data: {
       purpose: dn.purpose,
       description: dn.description,
       proof_url: dn.proofUrl || null,
-      created_at: dn.createdAt,
+      created_at: toIsoTimestamp(dn.createdAt),
     }));
     const { error: errDon } = await client.from('donations').upsert(donPayload, { onConflict: 'id' });
     if (errDon) throw new Error(`Tabel donations: ${errDon.message}`);
@@ -295,7 +321,7 @@ export async function pushAllDataToSupabase(data: {
       description: sc.description,
       documentation_urls: sc.documentationUrls || [],
       expenses: sc.expenses || [],
-      created_at: sc.createdAt,
+      created_at: toIsoTimestamp(sc.createdAt),
     }));
     const { error: errSoc } = await client.from('social_services').upsert(socPayload, { onConflict: 'id' });
     if (errSoc) throw new Error(`Tabel social_services: ${errSoc.message}`);
@@ -553,3 +579,28 @@ export async function pullAllDataFromSupabase(): Promise<{
     return { success: false, message: `Gagal menarik data dari Supabase: ${error.message || 'Terjadi kesalahan'}` };
   }
 }
+
+/**
+ * Berlangganan perubahan realtime ke Supabase untuk sinkronisasi antar perangkat/pengguna.
+ */
+export function subscribeToSupabaseRealtime(onDataChanged: () => void): (() => void) | null {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  try {
+    const channel = client
+      .channel('patelki-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        onDataChanged();
+      })
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Failed to subscribe to Supabase realtime:', err);
+    return null;
+  }
+}
+
