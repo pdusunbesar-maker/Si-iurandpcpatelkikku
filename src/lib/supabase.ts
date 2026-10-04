@@ -219,7 +219,7 @@ async function upsertInChunks(
       throw new Error(`Tabel ${table}: ${error.message}`);
     }
     // Add small delay to stabilize connection
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 250));
   }
 }
 
@@ -231,10 +231,13 @@ export async function deleteFromSupabase(
   field: string,
   value: any
 ): Promise<{ success: boolean; message: string }> {
-  const client = getSupabaseClient();
-  if (!client) {
+  // Always get a fresh configuration and client to ensure connectivity
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
     return { success: false, message: 'Supabase belum dikonfigurasi!' };
   }
+
+  const client = createClient(url, key, { auth: { persistSession: false } });
 
   try {
     const { error } = await client.from(table).delete().eq(field, value);
@@ -297,7 +300,7 @@ export async function pushAllDataToSupabase(data: {
       amount: d.amount,
       updated_at: toIsoTimestamp(d.updatedAt),
     }));
-    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 20);
+    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 10);
 
     // 3. Payment submissions
     const submissionsPayload = data.paymentSubmissions.map(s => ({
