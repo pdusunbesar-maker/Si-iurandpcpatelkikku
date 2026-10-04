@@ -223,6 +223,30 @@ async function upsertInChunks(
   }
 }
 
+export async function upsertToSupabase(
+  table: string,
+  data: any,
+  onConflict: string
+): Promise<{ success: boolean; message: string }> {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    return { success: false, message: 'Supabase belum dikonfigurasi!' };
+  }
+
+  const client = createClient(url, key, { auth: { persistSession: false } });
+
+  try {
+    const { error } = await client.from(table).upsert(data, { onConflict });
+    if (error) {
+      throw new Error(`Tabel ${table}: ${error.message}`);
+    }
+    return { success: true, message: 'Data berhasil disimpan ke Supabase' };
+  } catch (error: any) {
+    console.error('Error upserting to Supabase:', error);
+    return { success: false, message: `Gagal menyimpan data: ${error.message}` };
+  }
+}
+
 /**
  * Menghapus record dari Supabase berdasarkan ID atau field tertentu.
  */

@@ -33,6 +33,7 @@ import {
   SupabaseConfig,
   deleteFromSupabase,
   clearTableFromSupabase,
+  upsertToSupabase,
 } from '../lib/supabase';
 
 interface AppContextType {
@@ -75,8 +76,8 @@ interface AppContextType {
     proofName?: string;
     notes?: string;
   }) => string;
-  approvePayment: (submissionId: string, notes?: string) => void;
-  rejectPayment: (submissionId: string, reason: string) => void;
+  approvePayment: (submissionId: string, notes?: string) => Promise<void>;
+  rejectPayment: (submissionId: string, reason: string) => Promise<void>;
 
   // Actions - Finance
   addTransaction: (tx: Omit<CashTransaction, 'id' | 'createdAt'>) => void;
@@ -621,8 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return subId;
   };
 
-  // Approve payment by bendahara
-  const approvePayment = (submissionId: string, notes?: string) => {
+  const approvePayment = async (submissionId: string, notes?: string) => {
     const sub = paymentSubmissions.find(s => s.id === submissionId);
     if (!sub) return;
 
@@ -691,10 +691,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'success',
       link: 'riwayat',
     });
+
+    // Force sync
+    await syncUploadToSupabase();
   };
 
-  // Reject payment by bendahara
-  const rejectPayment = (submissionId: string, reason: string) => {
+  const rejectPayment = async (submissionId: string, reason: string) => {
     const sub = paymentSubmissions.find(s => s.id === submissionId);
     if (!sub) return;
 
@@ -735,6 +737,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'danger',
       link: 'bayar',
     });
+
+    // Force sync
+    await syncUploadToSupabase();
   };
 
   // Cash transactions
