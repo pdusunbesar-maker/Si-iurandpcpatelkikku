@@ -209,17 +209,36 @@ async function upsertInChunks(
   table: string,
   data: any[],
   onConflict: string,
-  chunkSize: number = 100
+  chunkSize: number = 100,
+  maxRetries: number = 3
 ) {
   if (!data || data.length === 0) return;
   for (let i = 0; i < data.length; i += chunkSize) {
     const chunk = data.slice(i, i + chunkSize);
-    const { error } = await client.from(table).upsert(chunk as any, { onConflict });
-    if (error) {
-      throw new Error(`Tabel ${table}: ${error.message}`);
+    let attempt = 0;
+    let success = false;
+    let lastError: any = null;
+
+    while (attempt < maxRetries && !success) {
+      try {
+        const { error } = await client.from(table).upsert(chunk as any, { onConflict });
+        if (error) {
+          throw new Error(`Tabel ${table}: ${error.message}`);
+        }
+        success = true;
+      } catch (err: any) {
+        attempt++;
+        lastError = err;
+        console.warn(`Upsert attempt ${attempt}/${maxRetries} on ${table} failed:`, err);
+        if (attempt >= maxRetries) {
+          throw new Error(`Tabel ${table}: ${err.message || 'Koneksi terputus saat mengunggah'}`);
+        }
+        // Exponential backoff delay (400ms, 800ms, 1600ms)
+        await new Promise(resolve => setTimeout(resolve, 400 * Math.pow(2, attempt - 1)));
+      }
     }
-    // Add small delay to stabilize connection
-    await new Promise(resolve => setTimeout(resolve, 250));
+    // Small breathing room between chunks
+    await new Promise(resolve => setTimeout(resolve, 120));
   }
 }
 
@@ -333,43 +352,77 @@ export async function pushAllDataToSupabase(data: {
       password: m.password || '123456',
       pin: m.pin || null,
     }));
-    await upsertInChunks(client, 'members', membersPayload, 'nap', 10);
+    await upsertInChunks(client, 'members', membersPayload, 'nap', 50);
 
-    // 2. Dues records (batch 100 for large lists)
-    const duesPayload = data.duesRecords.map(d => ({
-      member_id: d.memberId,
-      year: d.year,
-      month: d.month,
-      status: d.status,
-      payment_id: d.paymentId || null,
-      amount: d.amount,
-      updated_at: toIsoTimestamp(d.updatedAt),
-    }));
-    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 10);
+    // Retrieve active members from Supabase to resolve foreign key ID mappings
+    const { data: dbMembers } = await client.from('members').select('id, nap');
+    const memberIdMap = new Map<string, string>();
+    if (dbMembers && dbMembers.length > 0) {
+      data.members.forEach(localM => {
+        const found = dbMembers.find((dbM: any) => dbM.nap === localM.nap || dbM.id === localM.id);
+        if (found) {
+          memberIdMap.set(localM.id, found.id);
+        }
+      });
+    }
+
+    // 2. Dues records (batch 100 for fast, stable uploads with retry)
+    const duesPayload = data.duesRecords
+      .map(d => {
+        const actualMemberId = memberIdMap.get(d.memberId) || d.memberId;
+        return {
+          member_id: actualMemberId,
+          year: d.year,
+          month: d.month,
+          status: d.status,
+          payment_id: d.paymentId || null,
+          amount: d.amount,
+          updated_at: toIsoTimestamp(d.updatedAt),
+        };
+      })
+      .filter(d => {
+        if (dbMembers && dbMembers.length > 0) {
+          return dbMembers.some((dbM: any) => dbM.id === d.member_id);
+        }
+        return true;
+      });
+
+    await upsertInChunks(client, 'dues_records', duesPayload, 'member_id,year,month', 100);
 
     // 3. Payment submissions
-    const submissionsPayload = data.paymentSubmissions.map(s => ({
-      id: s.id,
-      member_id: s.memberId,
-      member_name: s.memberName,
-      member_nap: s.memberNap,
-      member_wa: s.memberWa,
-      member_instansi: s.memberInstansi,
-      months: s.months,
-      total_amount: s.totalAmount,
-      bank_account_id: s.bankAccountId,
-      bank_name: s.bankName,
-      account_number: s.accountNumber,
-      proof_url: safeImagePayload(s.proofUrl) || s.proofUrl,
-      proof_name: s.proofName || null,
-      status: s.status,
-      submitted_at: toIsoTimestamp(s.submittedAt),
-      verified_at: s.verifiedAt ? toIsoTimestamp(s.verifiedAt) : null,
-      verified_by: s.verifiedBy || null,
-      rejection_reason: s.rejectionReason || null,
-      notes: s.notes || null,
-    }));
-    await upsertInChunks(client, 'payment_submissions', submissionsPayload, 'id', 100);
+    const submissionsPayload = data.paymentSubmissions
+      .map(s => {
+        const actualMemberId = memberIdMap.get(s.memberId) || s.memberId;
+        return {
+          id: s.id,
+          member_id: actualMemberId,
+          member_name: s.memberName,
+          member_nap: s.memberNap,
+          member_wa: s.memberWa,
+          member_instansi: s.memberInstansi,
+          months: s.months,
+          total_amount: s.totalAmount,
+          bank_account_id: s.bankAccountId,
+          bank_name: s.bankName,
+          account_number: s.accountNumber,
+          proof_url: safeImagePayload(s.proofUrl) || s.proofUrl,
+          proof_name: s.proofName || null,
+          status: s.status,
+          submitted_at: toIsoTimestamp(s.submittedAt),
+          verified_at: s.verifiedAt ? toIsoTimestamp(s.verifiedAt) : null,
+          verified_by: s.verifiedBy || null,
+          rejection_reason: s.rejectionReason || null,
+          notes: s.notes || null,
+        };
+      })
+      .filter(s => {
+        if (dbMembers && dbMembers.length > 0) {
+          return dbMembers.some((dbM: any) => dbM.id === s.member_id);
+        }
+        return true;
+      });
+
+    await upsertInChunks(client, 'payment_submissions', submissionsPayload, 'id', 50);
 
     // 4. Cash Transactions
     const txPayload = data.transactions.map(t => ({
@@ -500,7 +553,7 @@ export async function pullAllDataFromSupabase(): Promise<{
     if (errM) throw new Error(`members: ${errM.message}`);
 
     // 2. Dues
-    const { data: dbDues, error: errD } = await client.from('dues_records').select('*');
+    const { data: dbDues, error: errD } = await client.from('dues_records').select('*').limit(10000);
     if (errD) throw new Error(`dues_records: ${errD.message}`);
 
     // 3. Submissions

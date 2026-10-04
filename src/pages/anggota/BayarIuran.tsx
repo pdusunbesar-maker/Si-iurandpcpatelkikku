@@ -59,6 +59,9 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
   // Success screen state
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [generatedWaUrl, setGeneratedWaUrl] = useState<string>('');
+  const [copiedWaMsg, setCopiedWaMsg] = useState<boolean>(false);
+  const [waMessageText, setWaMessageText] = useState<string>('');
 
   if (!currentMember) {
     return <div className="p-8 text-center text-slate-500">Anggota tidak ditemukan.</div>;
@@ -119,6 +122,8 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
     setTimeout(() => setCopiedBankId(null), 2000);
   };
 
+  const selectedBank = bankAccounts.find(b => b.id === selectedBankId);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedMonthsList.length === 0) {
@@ -141,6 +146,39 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
 
     setSubmittedId(subId);
 
+    // Format WhatsApp confirmation text
+    const periodStr = selectedMonthsList.map(m => `${MONTH_NAMES[m.month - 1]} ${m.year}`).join(', ');
+    const bankDetails = selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : 'Rekening Resmi DPC';
+    
+    const waText = `Halo Bendahara DPC PATELKI Kayong Utara (${settings.bendaharaName}),\n\n` +
+      `Saya telah mengunggah bukti pembayaran iuran anggota melalui aplikasi:\n` +
+      `• *Nama Lengkap:* ${currentMember.nama} ${currentMember.gelar || ''}\n` +
+      `• *NAP:* ${currentMember.nap || '-'}\n` +
+      `• *Instansi:* ${currentMember.instansi || '-'}\n` +
+      `• *Periode Iuran:* ${periodStr} (${selectedMonthsList.length} Bulan)\n` +
+      `• *Total Nominal:* ${formatCurrency(totalAmount)}\n` +
+      `• *Tujuan Transfer:* ${bankDetails}\n` +
+      (notes ? `• *Catatan:* ${notes}\n` : '') +
+      `• *ID Pengajuan:* #${subId}\n` +
+      `• *Waktu Pengajuan:* ${new Date().toLocaleString('id-ID')}\n\n` +
+      `Foto/struk bukti transfer sudah saya unggah di aplikasi. Mohon bantuannya untuk diverifikasi. Terima kasih. 🙏`;
+
+    setWaMessageText(waText);
+
+    // Generate direct WhatsApp link to Bendahara
+    const waTargetNumber = settings.contactWa || '6281256789001';
+    let cleanWa = waTargetNumber.replace(/[^0-9]/g, '');
+    if (cleanWa.startsWith('0')) {
+      cleanWa = '62' + cleanWa.substring(1);
+    }
+    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`;
+    setGeneratedWaUrl(waUrl);
+
+    // Automatically trigger WhatsApp in new tab / app
+    try {
+      window.open(waUrl, '_blank');
+    } catch (_) {}
+
     // Trigger celebratory confetti
     try {
       confetti({
@@ -151,39 +189,101 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
     } catch (_) {}
   };
 
-  const selectedBank = bankAccounts.find(b => b.id === selectedBankId);
+  const handleCopyWaMessage = () => {
+    navigator.clipboard.writeText(waMessageText);
+    setCopiedWaMsg(true);
+    setTimeout(() => setCopiedWaMsg(false), 2000);
+  };
 
-  // If already submitted, show success card
+  // If already submitted, show success screen with direct WhatsApp connectivity
   if (submittedId) {
     return (
-      <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xl text-center animate-in zoom-in-95 duration-200">
-        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-xl text-center animate-in zoom-in-95 duration-200 space-y-6">
+        <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
           <CheckCircle2 className="w-10 h-10" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900">Pembayaran Berhasil Dikirim!</h2>
-        <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
-          Bukti transfer iuran sebesar <strong className="text-emerald-700 font-mono">{formatCurrency(totalAmount)}</strong> ({selectedMonthsList.length} Bulan) telah tersimpan dengan status <strong className="text-amber-600">MENUNGGU VERIFIKASI</strong>.
-        </p>
-
-        <div className="my-6 p-4 rounded-2xl bg-amber-50 border border-amber-300 text-xs text-amber-950 text-left space-y-1">
-          <p className="font-bold flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-amber-600" /> Informasi Alur Selanjutnya:
-          </p>
-          <p className="text-slate-600">
-            1. Bendahara DPC Patelki Kayong Utara akan memverifikasi mutasi rekening.
-          </p>
-          <p className="text-slate-600">
-            2. Setelah disetujui, matrix iuran Anda otomatis berubah menjadi hijau (LUNAS) dan Anda dapat mengunduh kuitansi resmi.
+        
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            Bukti Pembayaran Berhasil Dikirim!
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed max-w-lg mx-auto">
+            Pembayaran iuran sebesar <strong className="text-emerald-700 font-mono font-black">{formatCurrency(totalAmount)}</strong> ({selectedMonthsList.length} Bulan) telah tercatat dan tersimpan di sistem.
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        {/* WhatsApp Direct Connect Card */}
+        <div className="p-5 sm:p-6 rounded-3xl bg-linear-to-b from-emerald-50 to-emerald-100/60 border-2 border-emerald-500/40 text-left space-y-3.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <span className="font-black text-xs uppercase tracking-wider text-emerald-900">
+                Konfirmasi Otomatis ke WhatsApp Bendahara
+              </span>
+            </div>
+            <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full">
+              WA Aktif
+            </span>
+          </div>
+
+          <p className="text-xs text-slate-700 leading-relaxed">
+            WhatsApp bendahara (<strong className="text-slate-900">{settings.bendaharaName}</strong>) telah dibuka otomatis. Jika belum terbuka, silakan klik tombol hijau di bawah untuk konfirmasi instan:
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-1">
+            <a
+              href={generatedWaUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full sm:flex-1 py-3 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              Buka WhatsApp Bendahara ({settings.contactWa})
+            </a>
+            
+            <button
+              type="button"
+              onClick={handleCopyWaMessage}
+              className="w-full sm:w-auto py-3 px-4 bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs rounded-2xl border border-slate-300 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              {copiedWaMsg ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              {copiedWaMsg ? 'Teks Tersalin!' : 'Salin Teks'}
+            </button>
+          </div>
+
+          {/* Quick Message Preview Collapsible */}
+          <div className="mt-2 pt-2 border-t border-emerald-200/60 text-[11px] text-slate-600">
+            <span className="font-semibold text-slate-500 block mb-1">Rincian pesan yang dikirim:</span>
+            <pre className="bg-white/80 p-3 rounded-xl border border-emerald-200/60 font-sans whitespace-pre-wrap text-slate-800 text-[11px] leading-relaxed select-all">
+              {waMessageText}
+            </pre>
+          </div>
+        </div>
+
+        {/* Info Alur Selanjutnya */}
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left space-y-1.5">
+          <p className="font-bold text-slate-900 flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" /> Status Pembayaran:
+          </p>
+          <p>
+            1. Status saat ini: <strong className="text-amber-700">MENUNGGU VERIFIKASI</strong>.
+          </p>
+          <p>
+            2. Setelah Bendahara menyetujui, matrix iuran otomatis menjadi <strong>LUNAS</strong> dan kuitansi resmi dapat langsung dicetak atau diunduh PDF.
+          </p>
+        </div>
+
+        {/* Bottom Actions */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
           <button
             type="button"
             onClick={() => onNavigate('riwayat-saya')}
-            className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer"
+            className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-2xl shadow-md cursor-pointer transition-all"
           >
-            Lihat Riwayat & Kuitansi
+            Lihat Riwayat & Kuitansi Saya
           </button>
           <button
             type="button"
@@ -191,10 +291,11 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
               setSubmittedId(null);
               setSelectedMonthsMap({});
               setProofUrl('');
+              setNotes('');
             }}
-            className="w-full sm:w-auto px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+            className="w-full sm:w-auto px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl cursor-pointer transition-colors"
           >
-            Bayar Bulan Lainnya
+            Bayar Periode Lainnya
           </button>
         </div>
       </div>

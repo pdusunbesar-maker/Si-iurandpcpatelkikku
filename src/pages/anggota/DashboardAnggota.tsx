@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { PaymentSubmission } from '../../types';
+import { ReceiptModal } from '../../components/ReceiptModal';
 import {
   Send,
   CheckCircle2,
@@ -15,6 +17,7 @@ import {
   Building,
   Phone,
   BookOpen,
+  Printer,
 } from 'lucide-react';
 
 interface DashboardAnggotaProps {
@@ -28,6 +31,7 @@ const MONTH_NAMES = [
 
 export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }) => {
   const { currentMember, duesRecords, paymentSubmissions, settings, formatCurrency } = useApp();
+  const [selectedReceipt, setSelectedReceipt] = useState<PaymentSubmission | null>(null);
 
   const currentYear = 2026;
   const currentMonth = 10; // Oktober 2026
@@ -327,16 +331,35 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
                   </p>
                 </div>
 
-                <div className="text-right">
+                <div className="text-right flex items-center gap-2">
                   <span className="font-mono font-bold text-slate-900 text-sm">
                     {formatCurrency(sub.totalAmount)}
                   </span>
+                  {sub.status === 'approved' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedReceipt(sub)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-xs transition-colors cursor-pointer shadow-xs"
+                      title="Lihat Kuitansi"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Kuitansi
+                    </button>
+                  )}
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
+
+      {/* Receipt Modal */}
+      {selectedReceipt && (
+        <ReceiptModal
+          submission={selectedReceipt}
+          onClose={() => setSelectedReceipt(null)}
+        />
+      )}
     </div>
   );
 };

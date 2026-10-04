@@ -31,9 +31,26 @@
 }
 
 @media print {
-  body {
+  /* Hide everything on page when printing except the printable receipt */
+  body * {
+    visibility: hidden;
+  }
+  #printable-receipt,
+  #printable-receipt * {
+    visibility: visible;
+  }
+  #printable-receipt {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 24px;
     background: white !important;
-    color: black !important;
+    border: none !important;
+    box-shadow: none !important;
+    z-index: 999999;
   }
   .no-print {
     display: none !important;
