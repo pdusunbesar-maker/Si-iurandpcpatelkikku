@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login, settings } = useApp();
+  const { login, settings, generateWhatsAppLink } = useApp();
 
   const [activeRole, setActiveRole] = useState<UserRole>('bendahara');
   const [identifier, setIdentifier] = useState('');
@@ -249,7 +249,7 @@ export const LoginPage: React.FC = () => {
 
             <div className="mt-5 flex items-center justify-between">
               <a
-                href={`https://wa.me/${settings.contactWa}?text=Halo%20Bendahara%20DPC%20Patelki%20KKU,%20saya%20butuh%20bantuan%20login%20aplikasi`}
+                href={generateWhatsAppLink(settings.contactWa, 'Halo Bendahara DPC Patelki KKU, saya butuh bantuan login aplikasi.')}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs font-bold text-emerald-700 hover:text-emerald-800"

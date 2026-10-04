@@ -34,6 +34,8 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
     settings,
     submitPayment,
     formatCurrency,
+    generateWhatsAppLink,
+    formatPhoneDisplay,
   } = useApp();
 
   const currentYear = 2026;
@@ -165,13 +167,8 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
 
     setWaMessageText(waText);
 
-    // Generate direct WhatsApp link to Bendahara
-    const waTargetNumber = settings.contactWa || '6281256789001';
-    let cleanWa = waTargetNumber.replace(/[^0-9]/g, '');
-    if (cleanWa.startsWith('0')) {
-      cleanWa = '62' + cleanWa.substring(1);
-    }
-    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`;
+    // Generate direct WhatsApp link to Bendahara using standardized utility
+    const waUrl = generateWhatsAppLink(settings.contactWa || '6281256789001', waText);
     setGeneratedWaUrl(waUrl);
 
     // Automatically trigger WhatsApp in new tab / app
@@ -241,7 +238,7 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
               className="w-full sm:flex-1 py-3 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs sm:text-sm rounded-2xl shadow-md transition-all flex items-center justify-center gap-2"
             >
               <Send className="w-4 h-4" />
-              Buka WhatsApp Bendahara ({settings.contactWa})
+              Buka WhatsApp Bendahara ({formatPhoneDisplay(settings.contactWa)})
             </a>
             
             <button

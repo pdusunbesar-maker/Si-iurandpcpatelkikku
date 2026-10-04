@@ -36,6 +36,11 @@ import {
   clearTableFromSupabase,
   upsertToSupabase,
 } from '../lib/supabase';
+import {
+  normalizePhoneNumber,
+  formatPhoneDisplay,
+  generateWhatsAppLink,
+} from '../utils/phoneUtils';
 
 interface AppContextType {
   // Auth & Roles
@@ -120,7 +125,9 @@ interface AppContextType {
     paidCount: number;
   }[];
   formatCurrency: (amount: number) => string;
-  generateWhatsAppLink: (phone: string, text: string) => string;
+  generateWhatsAppLink: (phone?: string | null, text?: string) => string;
+  normalizePhoneNumber: (phone?: string | null) => string;
+  formatPhoneDisplay: (phone?: string | null, withCountryCode?: boolean) => string;
   resetAllDataToDefault: () => Promise<void>;
 
   // Supabase Database Integration
@@ -141,10 +148,11 @@ const MONTH_NAMES = [
 ];
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load from localStorage or defaults
+  // Load from localStorage or defaults with automatic phone number normalization
   const [members, setMembers] = useState<Member[]>(() => {
     const saved = localStorage.getItem('patelki_members');
-    return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
+    const raw: Member[] = saved ? JSON.parse(saved) : INITIAL_MEMBERS;
+    return raw.map(m => ({ ...m, noWa: normalizePhoneNumber(m.noWa) }));
   });
 
   const [duesRecords, setDuesRecords] = useState<DuesRecord[]>(() => {
@@ -154,7 +162,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [paymentSubmissions, setPaymentSubmissions] = useState<PaymentSubmission[]>(() => {
     const saved = localStorage.getItem('patelki_submissions');
-    return saved ? JSON.parse(saved) : INITIAL_PAYMENT_SUBMISSIONS;
+    const raw: PaymentSubmission[] = saved ? JSON.parse(saved) : INITIAL_PAYMENT_SUBMISSIONS;
+    return raw.map(s => ({ ...s, memberWa: normalizePhoneNumber(s.memberWa) }));
   });
 
   const [transactions, setTransactions] = useState<CashTransaction[]>(() => {
@@ -179,7 +188,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('patelki_settings');
-    return saved ? JSON.parse(saved) : INITIAL_SETTINGS;
+    const raw: AppSettings = saved ? JSON.parse(saved) : INITIAL_SETTINGS;
+    return { ...raw, contactWa: normalizePhoneNumber(raw.contactWa || '6281256789001') };
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
@@ -448,7 +458,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Member actions
   const addMember = (newMemData: Omit<Member, 'id'>) => {
     const newId = `mem-${Date.now()}`;
-    const newMember: Member = { ...newMemData, id: newId };
+    const newMember: Member = {
+      ...newMemData,
+      noWa: normalizePhoneNumber(newMemData.noWa),
+      id: newId,
+    };
     setMembers(prev => [...prev, newMember]);
 
     // Generate dues records for new member (2025 to 2031)
@@ -468,9 +482,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateMember = (id: string, data: Partial<Member>) => {
-    setMembers(prev => prev.map(m => (m.id === id ? { ...m, ...data } : m)));
+    const cleanData = {
+      ...data,
+      ...(data.noWa !== undefined ? { noWa: normalizePhoneNumber(data.noWa) } : {}),
+    };
+    setMembers(prev => prev.map(m => (m.id === id ? { ...m, ...cleanData } : m)));
     if (currentMember?.id === id) {
-      setCurrentMember(prev => (prev ? { ...prev, ...data } : null));
+      setCurrentMember(prev => (prev ? { ...prev, ...cleanData } : null));
     }
   };
 
@@ -515,7 +533,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     importedList.forEach((item, index) => {
       const newId = `mem-${Date.now()}-${index}`;
-      const newMem: Member = { ...item, id: newId };
+      const newMem: Member = {
+        ...item,
+        noWa: normalizePhoneNumber(item.noWa),
+        id: newId,
+      };
       addedMembers.push(newMem);
 
       for (let y = settings.startYear; y <= settings.endYear; y++) {
@@ -575,7 +597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       memberId: data.memberId,
       memberName: member ? `${member.nama}, ${member.gelar}` : 'Anggota',
       memberNap: member?.nap || '',
-      memberWa: member?.noWa || '',
+      memberWa: normalizePhoneNumber(member?.noWa || ''),
       memberInstansi: member?.instansi || '',
       months: data.months,
       totalAmount,
@@ -833,7 +855,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Settings
   const updateSettings = (newSettings: Partial<AppSettings>) => {
     setSettings(prev => {
-      const updated = { ...prev, ...newSettings };
+      const cleanWa = newSettings.contactWa !== undefined ? normalizePhoneNumber(newSettings.contactWa) : prev.contactWa;
+      const updated = {
+        ...prev,
+        ...newSettings,
+        ...(newSettings.contactWa !== undefined ? { contactWa: cleanWa } : {}),
+      };
       localStorage.setItem('patelki_settings', JSON.stringify(updated));
       return updated;
     });
@@ -993,14 +1020,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).format(amount);
   };
 
-  const generateWhatsAppLink = (phone: string, text: string) => {
-    let cleanNumber = phone.replace(/[^0-9]/g, '');
-    if (cleanNumber.startsWith('0')) {
-      cleanNumber = '62' + cleanNumber.substring(1);
-    }
-    return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(text)}`;
-  };
-
   const resetAllDataToDefault = async () => {
     localStorage.clear();
     setMembers([]);
@@ -1147,6 +1166,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getYearlyArrearsList,
         formatCurrency,
         generateWhatsAppLink,
+        normalizePhoneNumber,
+        formatPhoneDisplay,
         resetAllDataToDefault,
         // Supabase Database Integration
         isSupabaseActive,

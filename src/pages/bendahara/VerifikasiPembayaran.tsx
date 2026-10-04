@@ -18,6 +18,7 @@ import {
   Check,
   X,
   Search,
+  Phone,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -32,6 +33,9 @@ export const VerifikasiPembayaran: React.FC = () => {
     rejectPayment,
     settings,
     formatCurrency,
+    generateWhatsAppLink,
+    formatPhoneDisplay,
+    normalizePhoneNumber,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'pending' | 'all'>('pending');
@@ -232,9 +236,23 @@ export const VerifikasiPembayaran: React.FC = () => {
                       <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
                         {sub.memberName}
                       </h3>
-                      <p className="text-xs text-emerald-800 font-mono font-bold mt-0.5">
-                        NAP: {sub.memberNap}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1 text-xs">
+                        <span className="text-emerald-800 font-mono font-bold">
+                          NAP: {sub.memberNap}
+                        </span>
+                        {sub.memberWa && (
+                          <a
+                            href={generateWhatsAppLink(sub.memberWa, `Halo ${sub.memberName}, terkait pembayaran iuran DPC PATELKI KKU Anda...`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 font-bold bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded-lg border border-emerald-200 transition-colors"
+                            title="Chat WhatsApp Anggota"
+                          >
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                            {formatPhoneDisplay(sub.memberWa)}
+                          </a>
+                        )}
+                      </div>
                       <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
                         <Building className="w-3.5 h-3.5 text-slate-400" /> {sub.memberInstansi}
                       </p>
@@ -347,7 +365,7 @@ export const VerifikasiPembayaran: React.FC = () => {
                       </button>
 
                       <a
-                        href={`https://wa.me/${sub.memberWa}`}
+                        href={generateWhatsAppLink(sub.memberWa, `Halo ${sub.memberName}, saya Bendahara DPC PATELKI KKU ingin menghubungi terkait pembayaran iuran Anda.`)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-emerald-700 text-xs font-bold"

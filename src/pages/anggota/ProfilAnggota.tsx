@@ -20,7 +20,7 @@ import {
 import { PhotoUploader } from '../../components/PhotoUploader';
 
 export const ProfilAnggota: React.FC = () => {
-  const { currentMember, updateMember, changeMemberPassword } = useApp();
+  const { currentMember, updateMember, changeMemberPassword, formatPhoneDisplay, normalizePhoneNumber } = useApp();
 
   if (!currentMember) return null;
 
@@ -46,7 +46,9 @@ export const ProfilAnggota: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateMember(currentMember.id, formData);
+    const cleanNoWa = normalizePhoneNumber(formData.noWa);
+    updateMember(currentMember.id, { ...formData, noWa: cleanNoWa });
+    setFormData(prev => ({ ...prev, noWa: cleanNoWa }));
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
@@ -261,14 +263,22 @@ export const ProfilAnggota: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">No. WhatsApp Aktif *</label>
+              <label className="block font-bold text-slate-700 mb-1">
+                No. WhatsApp Aktif (Format: 08... atau 628...) *
+              </label>
               <input
                 type="text"
                 required
                 value={formData.noWa}
                 onChange={e => setFormData({ ...formData, noWa: e.target.value })}
+                placeholder="Contoh: 081234567890"
                 className="w-full p-2.5 rounded-xl border border-slate-300 outline-hidden font-mono"
               />
+              {formData.noWa && (
+                <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                  ✓ Format WhatsApp: <code>{normalizePhoneNumber(formData.noWa)}</code> ({formatPhoneDisplay(formData.noWa)})
+                </p>
+              )}
             </div>
 
             <div>

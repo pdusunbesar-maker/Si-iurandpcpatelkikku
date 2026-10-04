@@ -37,6 +37,9 @@ export const DataAnggota: React.FC = () => {
     getMemberDuesSummary,
     formatCurrency,
     changeMemberPassword,
+    generateWhatsAppLink,
+    formatPhoneDisplay,
+    normalizePhoneNumber,
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,11 +134,16 @@ export const DataAnggota: React.FC = () => {
       return;
     }
 
+    const payload = {
+      ...formData,
+      noWa: normalizePhoneNumber(formData.noWa),
+    };
+
     if (editingMember) {
-      updateMember(editingMember.id, formData);
+      updateMember(editingMember.id, payload);
       setEditingMember(null);
     } else {
-      addMember(formData);
+      addMember(payload);
       setShowAddModal(false);
     }
   };
@@ -183,7 +191,7 @@ export const DataAnggota: React.FC = () => {
           nama: row['Nama'] || row['Nama Lengkap'] || `Anggota Baru ${idx + 1}`,
           gelar: row['Gelar'] || 'A.Md.Kes',
           nap: row['NAP'] || row['Nomor Anggota'] || `61.11.${(members.length + idx + 1).toString().padStart(3, '0')}`,
-          noWa: String(row['No WhatsApp'] || row['WhatsApp'] || row['No. HP'] || '6281200000000'),
+          noWa: normalizePhoneNumber(String(row['No WhatsApp'] || row['WhatsApp'] || row['No. HP'] || '6281200000000')),
           instansi: row['Instansi'] || row['Unit Kerja'] || 'Puskesmas di Kayong Utara',
           jabatan: row['Jabatan'] || 'ATLM Pelaksana',
           status: (row['Status']?.toString().toLowerCase().includes('non') ? 'nonaktif' : 'aktif') as 'aktif' | 'nonaktif',
@@ -397,13 +405,14 @@ export const DataAnggota: React.FC = () => {
                       {/* WhatsApp */}
                       <td className="py-3.5 px-4">
                         <a
-                          href={`https://wa.me/${m.noWa}`}
+                          href={generateWhatsAppLink(m.noWa, `Halo ${m.nama}, saya Bendahara DPC PATELKI Kayong Utara ingin menghubungi Anda terkait iuran organisasi.`)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 font-bold bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-colors"
+                          className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-900 font-bold bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg transition-colors font-mono text-xs border border-emerald-200"
+                          title="Hubungi via WhatsApp"
                         >
-                          <Phone className="w-3.5 h-3.5" />
-                          {m.noWa}
+                          <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                          {formatPhoneDisplay(m.noWa)}
                         </a>
                       </td>
 
@@ -569,16 +578,21 @@ export const DataAnggota: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    No. WhatsApp Aktif *
+                    No. WhatsApp Aktif (Format: 08... atau 628...) *
                   </label>
                   <input
                     type="text"
                     required
                     value={formData.noWa}
                     onChange={e => setFormData({ ...formData, noWa: e.target.value })}
-                    placeholder="6281234567890"
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:border-amber-500 outline-hidden"
+                    placeholder="Contoh: 081234567890 atau 6281234567890"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:border-amber-500 outline-hidden font-mono"
                   />
+                  {formData.noWa && (
+                    <p className="text-[11px] text-emerald-700 font-semibold mt-1">
+                      ✓ Format WhatsApp: <code>{normalizePhoneNumber(formData.noWa)}</code> ({formatPhoneDisplay(formData.noWa)})
+                    </p>
+                  )}
                 </div>
               </div>
 

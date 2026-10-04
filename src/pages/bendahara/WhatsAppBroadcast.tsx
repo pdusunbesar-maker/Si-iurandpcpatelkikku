@@ -18,7 +18,15 @@ const MONTH_NAMES = [
 ];
 
 export const WhatsAppBroadcast: React.FC = () => {
-  const { members, duesRecords, settings, formatCurrency, generateWhatsAppLink } = useApp();
+  const {
+    members,
+    duesRecords,
+    settings,
+    formatCurrency,
+    generateWhatsAppLink,
+    formatPhoneDisplay,
+    normalizePhoneNumber,
+  } = useApp();
 
   const [activeTab, setActiveTab] = useState<'reminder' | 'custom'>('reminder');
   const [searchQuery, setSearchQuery] = useState('');
@@ -65,7 +73,7 @@ export const WhatsAppBroadcast: React.FC = () => {
 
     setSelectedTarget({
       name: `${item.member.nama}, ${item.member.gelar}`,
-      phone: item.member.noWa,
+      phone: normalizePhoneNumber(item.member.noWa),
       message: msg,
     });
   };
@@ -74,7 +82,7 @@ export const WhatsAppBroadcast: React.FC = () => {
     const personalized = customMsg.replace(/\[NAMA\]/g, `${m.nama}, ${m.gelar}`);
     setSelectedTarget({
       name: `${m.nama}, ${m.gelar}`,
-      phone: m.noWa,
+      phone: normalizePhoneNumber(m.noWa),
       message: personalized,
     });
   };
@@ -169,7 +177,7 @@ export const WhatsAppBroadcast: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-mono font-bold text-emerald-800">{item.member.nap}</div>
-                        <div className="text-[11px] text-slate-500">{item.member.instansi}</div>
+                        <div className="text-[11px] text-slate-500">{item.member.instansi} • {formatPhoneDisplay(item.member.noWa)}</div>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-800 font-bold text-[11px]">
@@ -224,7 +232,7 @@ export const WhatsAppBroadcast: React.FC = () => {
                   <div key={m.id} className="p-3.5 flex items-center justify-between hover:bg-slate-50">
                     <div>
                       <p className="font-bold text-xs text-slate-900">{m.nama}, {m.gelar}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">{m.nap} • {m.instansi}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">{m.nap} • {m.instansi} • {formatPhoneDisplay(m.noWa)}</p>
                     </div>
 
                     <button

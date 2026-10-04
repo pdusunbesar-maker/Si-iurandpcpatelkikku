@@ -56,6 +56,9 @@ export const Pengaturan: React.FC = () => {
     syncUploadToSupabase,
     syncDownloadFromSupabase,
     testSupabase,
+    generateWhatsAppLink,
+    formatPhoneDisplay,
+    normalizePhoneNumber,
   } = useApp();
 
   const [settingsForm, setSettingsForm] = useState(settings);
@@ -69,10 +72,7 @@ export const Pengaturan: React.FC = () => {
 
   const handleSaveWaNumber = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    let cleanWa = settingsForm.contactWa.replace(/[^0-9]/g, '');
-    if (cleanWa.startsWith('0')) {
-      cleanWa = '62' + cleanWa.substring(1);
-    }
+    const cleanWa = normalizePhoneNumber(settingsForm.contactWa);
     const updated = { ...settingsForm, contactWa: cleanWa };
     setSettingsForm(updated);
     updateSettings({ contactWa: cleanWa });
@@ -81,12 +81,9 @@ export const Pengaturan: React.FC = () => {
   };
 
   const handleTestWa = () => {
-    let cleanWa = settingsForm.contactWa.replace(/[^0-9]/g, '');
-    if (cleanWa.startsWith('0')) {
-      cleanWa = '62' + cleanWa.substring(1);
-    }
+    const cleanWa = normalizePhoneNumber(settingsForm.contactWa);
     const testMsg = `Halo Bendahara DPC PATELKI Kayong Utara,\n\nIni adalah pesan uji coba tautan konfirmasi pembayaran iuran. Nomor WhatsApp ini (${cleanWa}) telah terhubung dengan benar ke aplikasi!`;
-    const url = `https://wa.me/${cleanWa}?text=${encodeURIComponent(testMsg)}`;
+    const url = generateWhatsAppLink(cleanWa, testMsg);
     window.open(url, '_blank');
   };
 
@@ -610,9 +607,15 @@ export const Pengaturan: React.FC = () => {
                 className="w-full pl-10 pr-4 py-3 rounded-2xl bg-emerald-950/60 border border-emerald-600/60 text-white font-mono font-bold text-sm outline-hidden focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
               />
             </div>
-            <p className="text-[11px] text-emerald-300/80">
-              💡 Nomor ini akan otomatis diawali kode negara <code>62</code> saat tautan WhatsApp dibuka oleh anggota.
-            </p>
+            {settingsForm.contactWa ? (
+              <p className="text-[11px] text-emerald-300 font-semibold mt-1">
+                ✓ Format WhatsApp Valid: <code className="bg-emerald-950/80 px-1.5 py-0.5 rounded text-amber-300 font-mono">{normalizePhoneNumber(settingsForm.contactWa)}</code> ({formatPhoneDisplay(settingsForm.contactWa)})
+              </p>
+            ) : (
+              <p className="text-[11px] text-emerald-300/80 mt-1">
+                💡 Nomor ini akan otomatis distandarkan dengan kode negara <code>62</code> saat tautan WhatsApp dibuka oleh anggota.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

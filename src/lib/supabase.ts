@@ -664,36 +664,73 @@ export async function pullAllDataFromSupabase(): Promise<{
   }
 
   try {
-    // 1. Members
-    const { data: dbMembers, error: errM } = await client.from('members').select('*');
-    if (errM) throw new Error(`members: ${errM.message}`);
+    // Helper to safely execute a query without uncaught network exceptions
+    const safeQuery = async <T = any>(
+      queryFn: () => PromiseLike<{ data: T | null; error: any }> | Promise<{ data: T | null; error: any }>
+    ): Promise<{ data: T | null; error: any }> => {
+      try {
+        const res = await queryFn();
+        return res as { data: T | null; error: any };
+      } catch (err: any) {
+        return {
+          data: null,
+          error: {
+            message: err?.message || 'Network request failed',
+            name: err?.name,
+          },
+        };
+      }
+    };
 
-    // 2. Dues
-    const { data: dbDues, error: errD } = await client.from('dues_records').select('*').limit(10000);
-    if (errD) throw new Error(`dues_records: ${errD.message}`);
+    // Execute queries in parallel safely
+    const [
+      resMembers,
+      resDues,
+      resSubs,
+      resTx,
+      resDon,
+      resSoc,
+      resBank,
+      resSettings,
+    ] = await Promise.all([
+      safeQuery(() => client.from('members').select('*')),
+      safeQuery(() => client.from('dues_records').select('*').limit(10000)),
+      safeQuery(() => client.from('payment_submissions').select('*')),
+      safeQuery(() => client.from('cash_transactions').select('*')),
+      safeQuery(() => client.from('donations').select('*')),
+      safeQuery(() => client.from('social_services').select('*')),
+      safeQuery(() => client.from('bank_accounts').select('*')),
+      safeQuery(() => client.from('app_settings').select('*').limit(1).maybeSingle()),
+    ]);
 
-    // 3. Submissions
-    const { data: dbSubs, error: errS } = await client.from('payment_submissions').select('*');
-    if (errS) throw new Error(`payment_submissions: ${errS.message}`);
+    // Check if network failed
+    const networkErr = [resMembers, resDues, resSubs, resTx, resDon, resSoc, resBank].find(
+      r => r.error && (r.error.message?.includes('Failed to fetch') || r.error.name === 'TypeError')
+    );
 
-    // 4. Transactions
-    const { data: dbTx, error: errT } = await client.from('cash_transactions').select('*');
-    if (errT) throw new Error(`cash_transactions: ${errT.message}`);
+    if (networkErr) {
+      return {
+        success: false,
+        message: 'Koneksi ke Supabase terputus (Failed to fetch). Pastikan jaringan aktif dan URL Supabase dapat diakses.',
+      };
+    }
 
-    // 5. Donations
-    const { data: dbDon, error: errDn } = await client.from('donations').select('*');
-    if (errDn) throw new Error(`donations: ${errDn.message}`);
+    // Check if main schema tables do not exist
+    if (resMembers.error && resMembers.error.code === 'PGRST205') {
+      return {
+        success: false,
+        message: 'Tabel database Supabase belum dibuat. Silakan jalankan Skrip SQL Schema di Supabase SQL Editor.',
+      };
+    }
 
-    // 6. Social
-    const { data: dbSoc, error: errSc } = await client.from('social_services').select('*');
-    if (errSc) throw new Error(`social_services: ${errSc.message}`);
-
-    // 7. Bank
-    const { data: dbBank, error: errB } = await client.from('bank_accounts').select('*');
-    if (errB) throw new Error(`bank_accounts: ${errB.message}`);
-
-    // 8. Settings
-    const { data: dbSettings } = await client.from('app_settings').select('*').limit(1).maybeSingle();
+    const dbMembers = resMembers.data || [];
+    const dbDues = resDues.data || [];
+    const dbSubs = resSubs.data || [];
+    const dbTx = resTx.data || [];
+    const dbDon = resDon.data || [];
+    const dbSoc = resSoc.data || [];
+    const dbBank = resBank.data || [];
+    const dbSettings: any = resSettings.data;
 
     const members: Member[] = (dbMembers || []).map((m: any) => ({
       id: m.id,
@@ -839,8 +876,11 @@ export async function pullAllDataFromSupabase(): Promise<{
       },
     };
   } catch (error: any) {
-    console.error('Error pulling from Supabase:', error);
-    return { success: false, message: `Gagal menarik data dari Supabase: ${error.message || 'Terjadi kesalahan'}` };
+    console.warn('Non-fatal notice pulling from Supabase:', error?.message || error);
+    const msg = error?.message?.includes('Failed to fetch') || error?.name === 'TypeError'
+      ? 'Koneksi ke Supabase terputus (Failed to fetch). Periksa jaringan atau URL Supabase Anda.'
+      : error?.message || 'Terjadi kesalahan saat memuat data';
+    return { success: false, message: `Gagal menarik data dari Supabase: ${msg}` };
   }
 }
 

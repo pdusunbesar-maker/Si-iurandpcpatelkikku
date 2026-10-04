@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { CreditCard, Copy, Check, QrCode, ShieldCheck, Download } from 'lucide-react';
 
 export const InfoRekening: React.FC = () => {
-  const { bankAccounts, settings } = useApp();
+  const { bankAccounts, settings, generateWhatsAppLink, formatPhoneDisplay } = useApp();
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, text: string) => {
@@ -120,12 +120,12 @@ export const InfoRekening: React.FC = () => {
         </div>
 
         <a
-          href={`https://wa.me/${settings.contactWa}`}
+          href={generateWhatsAppLink(settings.contactWa, 'Halo Bendahara DPC PATELKI KKU, saya anggota ingin menanyakan info rekening / pembayaran iuran.')}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-2xl transition-all shadow-md shrink-0"
         >
-          Chat WhatsApp Bendahara
+          Chat WhatsApp Bendahara ({formatPhoneDisplay(settings.contactWa)})
         </a>
       </div>
     </div>
