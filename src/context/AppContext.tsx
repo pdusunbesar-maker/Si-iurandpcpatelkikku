@@ -147,38 +147,89 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
+// Identifiers of mock demo members to prevent old demo data from reappearing
+const MOCK_DEMO_MEMBER_IDS = new Set([
+  'mem-1', 'mem-2', 'mem-3', 'mem-4', 'mem-5',
+  'mem-6', 'mem-7', 'mem-8', 'mem-9', 'mem-10',
+  'mem-11', 'mem-12'
+]);
+
+// Run one-time purge of old cached mock data in localStorage
+if (typeof window !== 'undefined') {
+  const hasPurged = localStorage.getItem('patelki_demo_purged_v5');
+  if (!hasPurged) {
+    const saved = localStorage.getItem('patelki_members');
+    if (saved) {
+      try {
+        const raw: Member[] = JSON.parse(saved);
+        const hasMock = raw.some(m => MOCK_DEMO_MEMBER_IDS.has(m.id) || m.nama === 'Siti Nurhaliza' || m.nama === 'Andi Setiawan');
+        if (hasMock) {
+          localStorage.removeItem('patelki_members');
+          localStorage.removeItem('patelki_dues');
+          localStorage.removeItem('patelki_submissions');
+          localStorage.removeItem('patelki_transactions');
+          localStorage.removeItem('patelki_donations');
+          localStorage.removeItem('patelki_social');
+          localStorage.removeItem('patelki_notifications');
+        }
+      } catch {}
+    }
+    localStorage.setItem('patelki_demo_purged_v5', 'true');
+  }
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load from localStorage or defaults with automatic phone number normalization
+  // Load from localStorage or empty arrays with automatic phone number normalization
   const [members, setMembers] = useState<Member[]>(() => {
     const saved = localStorage.getItem('patelki_members');
-    const raw: Member[] = saved ? JSON.parse(saved) : INITIAL_MEMBERS;
-    return raw.map(m => ({ ...m, noWa: normalizePhoneNumber(m.noWa) }));
+    if (!saved) return [];
+    try {
+      const raw: Member[] = JSON.parse(saved);
+      return raw
+        .filter(m => !MOCK_DEMO_MEMBER_IDS.has(m.id))
+        .map(m => ({ ...m, noWa: normalizePhoneNumber(m.noWa) }));
+    } catch {
+      return [];
+    }
   });
 
   const [duesRecords, setDuesRecords] = useState<DuesRecord[]>(() => {
     const saved = localStorage.getItem('patelki_dues');
-    return saved ? JSON.parse(saved) : generateInitialDues();
+    if (!saved) return [];
+    try {
+      const raw: DuesRecord[] = JSON.parse(saved);
+      return raw.filter(d => !MOCK_DEMO_MEMBER_IDS.has(d.memberId));
+    } catch {
+      return [];
+    }
   });
 
   const [paymentSubmissions, setPaymentSubmissions] = useState<PaymentSubmission[]>(() => {
     const saved = localStorage.getItem('patelki_submissions');
-    const raw: PaymentSubmission[] = saved ? JSON.parse(saved) : INITIAL_PAYMENT_SUBMISSIONS;
-    return raw.map(s => ({ ...s, memberWa: normalizePhoneNumber(s.memberWa) }));
+    if (!saved) return [];
+    try {
+      const raw: PaymentSubmission[] = JSON.parse(saved);
+      return raw
+        .filter(s => !MOCK_DEMO_MEMBER_IDS.has(s.memberId))
+        .map(s => ({ ...s, memberWa: normalizePhoneNumber(s.memberWa) }));
+    } catch {
+      return [];
+    }
   });
 
   const [transactions, setTransactions] = useState<CashTransaction[]>(() => {
     const saved = localStorage.getItem('patelki_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [donations, setDonations] = useState<Donation[]>(() => {
     const saved = localStorage.getItem('patelki_donations');
-    return saved ? JSON.parse(saved) : INITIAL_DONATIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [socialServices, setSocialServices] = useState<SocialService[]>(() => {
     const saved = localStorage.getItem('patelki_social');
-    return saved ? JSON.parse(saved) : INITIAL_SOCIAL_SERVICES;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
@@ -194,7 +245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem('patelki_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Supabase Database Integration State
@@ -207,14 +258,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isSupabaseConfigured()) {
       pullAllDataFromSupabase().then((res) => {
         if (res.success && res.data) {
-          if (res.data.members.length > 0) setMembers(res.data.members);
-          if (res.data.duesRecords.length > 0) setDuesRecords(res.data.duesRecords);
-          if (res.data.paymentSubmissions.length > 0) setPaymentSubmissions(res.data.paymentSubmissions);
-          if (res.data.transactions.length > 0) setTransactions(res.data.transactions);
-          if (res.data.donations.length > 0) setDonations(res.data.donations);
-          if (res.data.socialServices.length > 0) setSocialServices(res.data.socialServices);
-          if (res.data.bankAccounts.length > 0) setBankAccounts(res.data.bankAccounts);
-          if (res.data.settings) setSettings(res.data.settings);
+          const cleanMembers = (res.data.members || []).filter(m => !MOCK_DEMO_MEMBER_IDS.has(m.id));
+          const cleanDues = (res.data.duesRecords || []).filter(d => !MOCK_DEMO_MEMBER_IDS.has(d.memberId));
+          const cleanSubs = (res.data.paymentSubmissions || []).filter(s => !MOCK_DEMO_MEMBER_IDS.has(s.memberId));
+          
+          setMembers(cleanMembers);
+          setDuesRecords(cleanDues);
+          setPaymentSubmissions(cleanSubs);
+          setTransactions(res.data.transactions || []);
+          setDonations(res.data.donations || []);
+          setSocialServices(res.data.socialServices || []);
+          if (res.data.bankAccounts && res.data.bankAccounts.length > 0) {
+            setBankAccounts(res.data.bankAccounts);
+          }
+          if (res.data.settings) {
+            setSettings(res.data.settings);
+          }
           setIsSupabaseActive(true);
         }
       }).catch(err => {
@@ -230,14 +289,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = subscribeToSupabaseRealtime(() => {
       pullAllDataFromSupabase().then(res => {
         if (res.success && res.data) {
-          if (res.data.members?.length > 0) setMembers(res.data.members);
-          if (res.data.duesRecords?.length > 0) setDuesRecords(res.data.duesRecords);
-          if (res.data.paymentSubmissions?.length > 0) setPaymentSubmissions(res.data.paymentSubmissions);
-          if (res.data.transactions?.length > 0) setTransactions(res.data.transactions);
-          if (res.data.donations?.length > 0) setDonations(res.data.donations);
-          if (res.data.socialServices?.length > 0) setSocialServices(res.data.socialServices);
-          if (res.data.bankAccounts?.length > 0) setBankAccounts(res.data.bankAccounts);
-          if (res.data.settings) setSettings(res.data.settings);
+          const cleanMembers = (res.data.members || []).filter(m => !MOCK_DEMO_MEMBER_IDS.has(m.id));
+          const cleanDues = (res.data.duesRecords || []).filter(d => !MOCK_DEMO_MEMBER_IDS.has(d.memberId));
+          const cleanSubs = (res.data.paymentSubmissions || []).filter(s => !MOCK_DEMO_MEMBER_IDS.has(s.memberId));
+
+          setMembers(cleanMembers);
+          setDuesRecords(cleanDues);
+          setPaymentSubmissions(cleanSubs);
+          setTransactions(res.data.transactions || []);
+          setDonations(res.data.donations || []);
+          setSocialServices(res.data.socialServices || []);
+          if (res.data.bankAccounts && res.data.bankAccounts.length > 0) {
+            setBankAccounts(res.data.bankAccounts);
+          }
+          if (res.data.settings) {
+            setSettings(res.data.settings);
+          }
           setIsSupabaseActive(true);
         }
       }).catch(err => {
@@ -378,7 +445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return { success: false, error: 'Kata sandi / PIN Bendahara salah.' };
       }
 
-      const bendahara = members.find(m => m.id === 'mem-1') || members[0];
+      const bendahara = members.find(m => m.nap === settings.bendaharaNap || m.jabatan?.toLowerCase().includes('bendahara')) || null;
       setCurrentUserRole('bendahara');
       setCurrentMember(bendahara);
       setIsAuthenticated(true);
@@ -1022,24 +1089,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetAllDataToDefault = async () => {
     localStorage.clear();
+    localStorage.setItem('patelki_demo_purged_v5', 'true');
     setMembers([]);
     setDuesRecords([]);
     setPaymentSubmissions([]);
     setTransactions([]);
     setDonations([]);
     setSocialServices([]);
-    setBankAccounts([]);
-    setSettings({
-      organizationName: 'Organisasi Baru',
-      monthlyFee: 0,
-      startYear: new Date().getFullYear(),
-      endYear: new Date().getFullYear(),
-    } as AppSettings);
+    setBankAccounts(INITIAL_BANK_ACCOUNTS);
+    setSettings(INITIAL_SETTINGS);
     setNotifications([]);
     setCurrentUserRole('bendahara');
     setCurrentMember(null);
 
-    // Clear supabase
+    // Clear remote supabase tables if connected
     if (isSupabaseActive) {
       const tables = [
         'members',
@@ -1048,11 +1111,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'cash_transactions',
         'donations',
         'social_services',
-        'bank_accounts',
-        'app_settings',
       ];
       for (const table of tables) {
-        await clearTableFromSupabase(table);
+        await clearTableFromSupabase(table).catch(err => {
+          console.warn(`Notice clearing ${table}:`, err);
+        });
       }
     }
     
@@ -1094,14 +1157,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const res = await pullAllDataFromSupabase();
       if (res.success && res.data) {
-        if (res.data.members.length > 0) setMembers(res.data.members);
-        if (res.data.duesRecords.length > 0) setDuesRecords(res.data.duesRecords);
-        if (res.data.paymentSubmissions.length > 0) setPaymentSubmissions(res.data.paymentSubmissions);
-        if (res.data.transactions.length > 0) setTransactions(res.data.transactions);
-        if (res.data.donations.length > 0) setDonations(res.data.donations);
-        if (res.data.socialServices.length > 0) setSocialServices(res.data.socialServices);
-        if (res.data.bankAccounts.length > 0) setBankAccounts(res.data.bankAccounts);
-        if (res.data.settings) setSettings(res.data.settings);
+        const cleanMembers = (res.data.members || []).filter(m => !MOCK_DEMO_MEMBER_IDS.has(m.id));
+        const cleanDues = (res.data.duesRecords || []).filter(d => !MOCK_DEMO_MEMBER_IDS.has(d.memberId));
+        const cleanSubs = (res.data.paymentSubmissions || []).filter(s => !MOCK_DEMO_MEMBER_IDS.has(s.memberId));
+
+        setMembers(cleanMembers);
+        setDuesRecords(cleanDues);
+        setPaymentSubmissions(cleanSubs);
+        setTransactions(res.data.transactions || []);
+        setDonations(res.data.donations || []);
+        setSocialServices(res.data.socialServices || []);
+        if (res.data.bankAccounts && res.data.bankAccounts.length > 0) {
+          setBankAccounts(res.data.bankAccounts);
+        }
+        if (res.data.settings) {
+          setSettings(res.data.settings);
+        }
         setIsSupabaseActive(true);
       }
       return { success: res.success, message: res.message };
