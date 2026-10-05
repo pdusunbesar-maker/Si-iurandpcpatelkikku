@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Member } from '../../types';
+import { Member, DuesRecord } from '../../types';
 import * as XLSX from 'xlsx';
 import {
   AlertCircle,
@@ -50,22 +50,42 @@ export const DaftarTunggakan: React.FC = () => {
   const arrearsList = members
     .filter(m => m.status === 'aktif')
     .map(member => {
-      const targetRecords = duesRecords.filter(d => {
-        if (d.memberId !== member.id) return false;
-        if (selectedPeriod !== 'all') {
-          const targetYr = Number(selectedPeriod);
-          if (d.year !== targetYr) return false;
-          if (d.year === currentCalendarYear) return d.month <= currentCalendarMonth;
-          if (d.year > currentCalendarYear) return false;
-          return true;
+      const memberRecordsMap = new Map<string, DuesRecord>();
+      duesRecords.forEach(d => {
+        if (d.memberId === member.id || (member.nap && d.memberId === member.nap)) {
+          memberRecordsMap.set(`${d.year}-${d.month}`, d);
         }
-        // 'all': from awal Januari 2025 up to current running calendar month
-        return d.year >= 2025 && (d.year < currentCalendarYear || (d.year === currentCalendarYear && d.month <= currentCalendarMonth));
       });
 
-      const unpaidRecords = targetRecords.filter(d => d.status === 'unpaid');
-      const totalArrears = unpaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
-      const paidCount = targetRecords.filter(d => d.status === 'paid').length;
+      const unpaidRecords: { year: number; month: number; amount: number }[] = [];
+      let paidCount = 0;
+      let totalArrears = 0;
+
+      const startYr = selectedPeriod !== 'all' ? Number(selectedPeriod) : 2025;
+      const endYr = selectedPeriod !== 'all' ? Number(selectedPeriod) : currentCalendarYear;
+
+      for (let yr = startYr; yr <= endYr; yr++) {
+        const maxMonth = (yr === currentCalendarYear) ? currentCalendarMonth : (yr > currentCalendarYear ? 0 : 12);
+        for (let mo = 1; mo <= maxMonth; mo++) {
+          const key = `${yr}-${mo}`;
+          const rec = memberRecordsMap.get(key);
+
+          const status = rec?.status || 'unpaid';
+          const amount = rec?.amount || settings.monthlyFee;
+
+          if (status === 'paid') {
+            paidCount++;
+          } else if (status === 'pending') {
+            // Pending verification
+          } else if (status === 'inactive') {
+            // Exempted
+          } else {
+            // Unpaid arrears
+            unpaidRecords.push({ year: yr, month: mo, amount });
+            totalArrears += amount;
+          }
+        }
+      }
 
       // Group unpaid months by year for clean readability e.g. "2025 (12 bln), Jan–Okt 2026 (10 bln)"
       const yearsSet = Array.from(new Set(unpaidRecords.map(u => u.year))).sort((a, b) => a - b);

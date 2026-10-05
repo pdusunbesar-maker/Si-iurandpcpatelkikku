@@ -395,6 +395,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('patelki_dues', JSON.stringify(duesRecords));
   }, [duesRecords]);
 
+  // Auto-healing: Ensure every registered active member has all dues records from 2025 to 2031
+  useEffect(() => {
+    if (members.length === 0) return;
+
+    setDuesRecords(prevDues => {
+      const existingMap = new Map<string, DuesRecord>();
+      prevDues.forEach(d => {
+        existingMap.set(`${d.memberId}-${d.year}-${d.month}`, d);
+      });
+
+      const missing: DuesRecord[] = [];
+      const startYr = settings.startYear || 2025;
+      const endYr = settings.endYear || 2031;
+      const fee = settings.monthlyFee || 30000;
+
+      members.forEach(m => {
+        for (let yr = startYr; yr <= endYr; yr++) {
+          for (let mo = 1; mo <= 12; mo++) {
+            const keyById = `${m.id}-${yr}-${mo}`;
+            const keyByNap = m.nap ? `${m.nap}-${yr}-${mo}` : '';
+
+            const found = existingMap.get(keyById) || (keyByNap ? existingMap.get(keyByNap) : undefined);
+
+            if (!found) {
+              missing.push({
+                memberId: m.id,
+                year: yr,
+                month: mo,
+                status: m.status === 'aktif' ? 'unpaid' : 'inactive',
+                amount: fee,
+              });
+            }
+          }
+        }
+      });
+
+      if (missing.length > 0) {
+        const next = [...prevDues, ...missing];
+        localStorage.setItem('patelki_dues', JSON.stringify(next));
+        return next;
+      }
+      return prevDues;
+    });
+  }, [members, settings.startYear, settings.endYear, settings.monthlyFee]);
+
   useEffect(() => {
     localStorage.setItem('patelki_submissions', JSON.stringify(paymentSubmissions));
   }, [paymentSubmissions]);
@@ -1184,40 +1229,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Member dues calculation (from January 2025 up to current running calendar month/day)
   const getMemberDuesSummary = (memberId: string, filterYear?: number) => {
+    const member = members.find(m => m.id === memberId || m.nap === memberId);
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1; // 1-12
+    const fee = settings.monthlyFee || 30000;
 
-    const targetRecords = duesRecords.filter(d => {
-      if (d.memberId !== memberId) return false;
-      if (filterYear) {
-        if (d.year !== filterYear) return false;
-        // If filtering for currentYear, only up to current running month
-        if (d.year === curYear) return d.month <= curMonth;
-        if (d.year > curYear) return false;
-        return true;
+    const startYr = filterYear || (settings.startYear || 2025);
+    const endYr = filterYear || curYear;
+
+    let totalPaid = 0;
+    let arrearsAmount = 0;
+    let paidMonthsCount = 0;
+    let pendingMonthsCount = 0;
+    const unpaidMonthsList: { year: number; month: number }[] = [];
+
+    // Map existing member dues by `${year}-${month}`
+    const memberRecordsMap = new Map<string, DuesRecord>();
+    duesRecords.forEach(d => {
+      if (d.memberId === memberId || (member && (d.memberId === member.id || d.memberId === member.nap))) {
+        memberRecordsMap.set(`${d.year}-${d.month}`, d);
+        if (d.status === 'paid' && (!filterYear || d.year === filterYear)) {
+          totalPaid += (d.amount || fee);
+        }
       }
-      // Across all history: from awal Januari 2025 up to current running calendar month
-      return d.year >= 2025 && (d.year < curYear || (d.year === curYear && d.month <= curMonth));
     });
 
-    const allPaidRecords = duesRecords.filter(
-      d => d.memberId === memberId && d.status === 'paid' && (filterYear ? d.year === filterYear : true)
-    );
-    const paidRecords = targetRecords.filter(d => d.status === 'paid');
-    const pendingRecords = targetRecords.filter(d => d.status === 'pending');
-    const unpaidRecords = targetRecords.filter(d => d.status === 'unpaid');
+    // Evaluate all active calendar months
+    for (let yr = startYr; yr <= endYr; yr++) {
+      const maxMonth = (yr === curYear) ? curMonth : (yr > curYear ? 0 : 12);
+      for (let mo = 1; mo <= maxMonth; mo++) {
+        const key = `${yr}-${mo}`;
+        const rec = memberRecordsMap.get(key);
 
-    const totalPaid = allPaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
-    const arrearsAmount = unpaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
+        const status = rec?.status || (member?.status === 'nonaktif' ? 'inactive' : 'unpaid');
+        const amount = rec?.amount || fee;
+
+        if (status === 'paid') {
+          paidMonthsCount++;
+        } else if (status === 'pending') {
+          pendingMonthsCount++;
+        } else if (status === 'inactive') {
+          // Exempted period
+        } else {
+          // Unpaid arrears
+          arrearsAmount += amount;
+          unpaidMonthsList.push({ year: yr, month: mo });
+        }
+      }
+    }
 
     return {
       totalPaid,
-      totalUnpaidMonths: unpaidRecords.length,
+      totalUnpaidMonths: unpaidMonthsList.length,
       arrearsAmount,
-      paidMonthsCount: paidRecords.length,
-      pendingMonthsCount: pendingRecords.length,
-      unpaidMonthsList: unpaidRecords.map(u => ({ year: u.year, month: u.month })),
+      paidMonthsCount,
+      pendingMonthsCount,
+      unpaidMonthsList,
     };
   };
 
@@ -1225,31 +1293,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1;
+    const fee = settings.monthlyFee || 30000;
 
     return members
       .filter(m => m.status === 'aktif')
       .map(member => {
-        const memberDues = duesRecords.filter(d => {
-          if (d.memberId !== member.id) return false;
-          if (targetYear && targetYear !== 'all') {
-            if (d.year !== targetYear) return false;
-            if (d.year === curYear) return d.month <= curMonth;
-            if (d.year > curYear) return false;
-            return true;
+        const memberRecordsMap = new Map<string, DuesRecord>();
+        duesRecords.forEach(d => {
+          if (d.memberId === member.id || (member.nap && d.memberId === member.nap)) {
+            memberRecordsMap.set(`${d.year}-${d.month}`, d);
           }
-          // Default / 'all': from awal Januari 2025 up to current running calendar month
-          return d.year >= 2025 && (d.year < curYear || (d.year === curYear && d.month <= curMonth));
         });
 
-        const unpaid = memberDues
-          .filter(d => d.status === 'unpaid')
-          .map(d => ({ year: d.year, month: d.month }));
+        const unpaid: { year: number; month: number }[] = [];
+        let paidCount = 0;
+        let totalArrears = 0;
 
-        const paidCount = memberDues.filter(d => d.status === 'paid').length;
-        const totalArrears = unpaid.reduce((sum, u) => {
-          const rec = duesRecords.find(d => d.memberId === member.id && d.year === u.year && d.month === u.month);
-          return sum + (rec?.amount || settings.monthlyFee);
-        }, 0);
+        const startYr = (targetYear && targetYear !== 'all') ? targetYear : (settings.startYear || 2025);
+        const endYr = (targetYear && targetYear !== 'all') ? targetYear : curYear;
+
+        for (let yr = startYr; yr <= endYr; yr++) {
+          const maxMonth = (yr === curYear) ? curMonth : (yr > curYear ? 0 : 12);
+          for (let mo = 1; mo <= maxMonth; mo++) {
+            const key = `${yr}-${mo}`;
+            const rec = memberRecordsMap.get(key);
+
+            const status = rec?.status || 'unpaid';
+            const amount = rec?.amount || fee;
+
+            if (status === 'paid') {
+              paidCount++;
+            } else if (status === 'pending') {
+              // Pending verification
+            } else if (status === 'inactive') {
+              // Exempted
+            } else {
+              // Unpaid arrears
+              unpaid.push({ year: yr, month: mo });
+              totalArrears += amount;
+            }
+          }
+        }
 
         return {
           member,
