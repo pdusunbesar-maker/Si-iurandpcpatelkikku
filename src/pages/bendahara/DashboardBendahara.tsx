@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Wallet,
@@ -18,7 +18,15 @@ import {
   ShieldCheck,
   ChevronRight,
   ArrowRight,
+  Building,
+  Calendar,
+  Layers,
+  Sparkles,
+  PieChart,
+  BarChart3,
+  Percent,
 } from 'lucide-react';
+import { Member } from '../../types';
 
 interface DashboardBendaharaProps {
   onNavigate: (page: string) => void;
@@ -28,6 +36,8 @@ const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNavigate }) => {
   const {
@@ -52,8 +62,11 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
   const currentMonth = now.getMonth() + 1; // 1-12 based on running calendar
   const currentMonthName = MONTH_NAMES[now.getMonth()];
 
+  const [chartYear, setChartYear] = useState<number>(currentYear);
+
   const activeMembers = members.filter(m => m.status === 'aktif');
   const activeCount = activeMembers.length;
+  const totalMemberCount = members.length;
 
   // Monthly stats for current running month
   const currentMonthDues = duesRecords.filter(
@@ -68,7 +81,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
   const totalPotentialThisMonth = activeCount * settings.monthlyFee;
   const complianceRateThisMonth = activeCount > 0 ? Math.round((paidCountMonth / activeCount) * 100) : 0;
 
-  // Overall totals
+  // Overall Cashbook totals
   const cashBalance = getCashBalance();
   const totalIncome = getTotalIncome();
   const totalExpense = getTotalExpense();
@@ -76,25 +89,77 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
   const totalSocial = getTotalSocialServices();
 
   const pendingSubmissions = paymentSubmissions.filter(s => s.status === 'pending');
+
   // Arrears list accumulated from January 2025 up to running calendar month
   const arrearsList = getYearlyArrearsList('all');
   const totalArrearsAll = arrearsList.reduce((sum, item) => sum + item.totalArrears, 0);
 
-  // Monthly breakdown for visual charts
-  const monthlyData = [
-    { month: 'Jan', income: 2400000, expense: 450000 },
-    { month: 'Feb', income: 2100000, expense: 620000 },
-    { month: 'Mar', income: 2700000, expense: 890000 },
-    { month: 'Apr', income: 2400000, expense: 350000 },
-    { month: 'Mei', income: 2200000, expense: 1200000 },
-    { month: 'Jun', income: 2500000, expense: 500000 },
-    { month: 'Jul', income: 2300000, expense: 400000 },
-    { month: 'Agu', income: 2600000, expense: 2200000 },
-    { month: 'Sep', income: 3300000, expense: 3270000 },
-    { month: 'Okt', income: 4460000, expense: 250000 },
-  ];
+  // Cumulative potential calculation from Jan 2025 up to running calendar month
+  const totalElapsedMonths = Math.max(1, ((currentYear - (settings.startYear || 2025)) * 12) + currentMonth);
+  const totalCumulativePotential = totalElapsedMonths * activeCount * settings.monthlyFee;
+  const totalDuesCollectedReal = duesRecords
+    .filter(d => d.status === 'paid' && d.year >= 2025 && (d.year < currentYear || (d.year === currentYear && d.month <= currentMonth)))
+    .reduce((sum, d) => sum + (d.amount || settings.monthlyFee), 0);
+  const cumulativeCollectionRate = totalCumulativePotential > 0
+    ? Math.round((totalDuesCollectedReal / totalCumulativePotential) * 100)
+    : 0;
 
-  const maxChartVal = Math.max(...monthlyData.map(d => Math.max(d.income, d.expense)), 5000000);
+  // Real-time Monthly Breakdown for Chart: Synchronized from `transactions` table
+  const monthlyData = MONTH_SHORT.map((mShort, index) => {
+    const mNum = index + 1;
+    const mStr = mNum.toString().padStart(2, '0');
+    const prefix = `${chartYear}-${mStr}`;
+
+    const monthTx = transactions.filter(t => t.date && t.date.startsWith(prefix));
+    const income = monthTx.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+    const expense = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      month: mShort,
+      monthNum: mNum,
+      income,
+      expense,
+      surplus: income - expense,
+      txCount: monthTx.length,
+    };
+  });
+
+  const chartTotalIncome = monthlyData.reduce((s, m) => s + m.income, 0);
+  const chartTotalExpense = monthlyData.reduce((s, m) => s + m.expense, 0);
+  const chartNetSurplus = chartTotalIncome - chartTotalExpense;
+  const maxChartVal = Math.max(...monthlyData.map(d => Math.max(d.income, d.expense)), 1000000);
+
+  // Real-time Member Institutional Distribution (Sebaran Instansi Anggota)
+  const instansiMap = new Map<string, {
+    name: string;
+    total: number;
+    active: number;
+    nonaktif: number;
+    members: Member[];
+  }>();
+
+  members.forEach(m => {
+    const instName = m.instansi && m.instansi.trim() ? m.instansi.trim() : 'Lainnya / Mandiri';
+    const existing = instansiMap.get(instName) || {
+      name: instName,
+      total: 0,
+      active: 0,
+      nonaktif: 0,
+      members: [],
+    };
+    existing.total += 1;
+    if (m.status === 'aktif') existing.active += 1;
+    else existing.nonaktif += 1;
+    existing.members.push(m);
+    instansiMap.set(instName, existing);
+  });
+
+  const instansiDistribution = Array.from(instansiMap.values())
+    .map(inst => ({
+      ...inst,
+      percentage: totalMemberCount > 0 ? Math.round((inst.total / totalMemberCount) * 100) : 0,
+    }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
@@ -158,76 +223,80 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <div>
-              <p className="text-xs font-bold text-emerald-950">Semua Verifikasi Tuntas</p>
-              <p className="text-[11px] text-emerald-700">Tidak ada antrean pembayaran baru</p>
+              <p className="text-xs font-bold text-emerald-900">Semua Pembayaran Terverifikasi</p>
+              <p className="text-[11px] text-emerald-700">Tidak ada antrean pending</p>
             </div>
           </div>
         )}
 
-        {arrearsList.length > 0 ? (
+        {totalArrearsAll > 0 ? (
           <div
             onClick={() => onNavigate('tunggakan')}
-            className="p-4 rounded-2xl bg-red-50 border-2 border-red-300 hover:bg-red-100/80 transition-all cursor-pointer flex items-center justify-between group shadow-xs"
+            className="p-4 rounded-2xl bg-red-50 border border-red-200 hover:bg-red-100/70 transition-all cursor-pointer flex items-center justify-between group shadow-xs"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-red-500 text-white rounded-xl">
+              <div className="p-2.5 bg-red-500 text-white rounded-xl font-bold">
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-black text-red-950">
-                  ⚠️ {arrearsList.length} Anggota Memiliki Tunggakan
+                <p className="text-xs font-black text-slate-900">
+                  ⚠️ {arrearsList.length} Anggota Menunggak
                 </p>
-                <p className="text-[11px] text-red-700">Total: {formatCurrency(totalArrearsAll)}</p>
+                <p className="text-[11px] text-red-700 font-mono font-bold">
+                  Total: {formatCurrency(totalArrearsAll)}
+                </p>
               </div>
             </div>
-            <ChevronRight className="w-5 h-5 text-red-600 group-hover:translate-x-1 transition-transform" />
+            <ChevronRight className="w-5 h-5 text-red-500 group-hover:translate-x-1 transition-transform" />
           </div>
         ) : (
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             <div>
-              <p className="text-xs font-bold text-emerald-950">Kepatuhan 100%</p>
-              <p className="text-[11px] text-emerald-700">Semua anggota telah melunasi iuran</p>
+              <p className="text-xs font-bold text-emerald-900">Kepatuhan Iuran 100%</p>
+              <p className="text-[11px] text-emerald-700">Seluruh anggota lunas s.d. saat ini</p>
             </div>
           </div>
         )}
 
         <div
-          onClick={() => onNavigate('buku-kas')}
-          className="p-4 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition-all cursor-pointer flex items-center justify-between group shadow-xs"
+          onClick={() => onNavigate('anggota-list')}
+          className="p-4 rounded-2xl bg-slate-50 border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer flex items-center justify-between group shadow-xs"
         >
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-400 text-slate-950 rounded-xl">
-              <Wallet className="w-5 h-5" />
+            <div className="p-2.5 bg-slate-900 text-white rounded-xl font-bold">
+              <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-black text-amber-300">
-                💰 Saldo Kas: {formatCurrency(cashBalance)}
+              <p className="text-xs font-black text-slate-900">
+                👥 {totalMemberCount} Ahli Lab Terdaftar
               </p>
-              <p className="text-[11px] text-slate-300">Buka Buku Kas & Riwayat Transaksi</p>
+              <p className="text-[11px] text-slate-600">
+                {activeCount} aktif • {instansiDistribution.length} instansi sebaran
+              </p>
             </div>
           </div>
-          <ChevronRight className="w-5 h-5 text-amber-400 group-hover:translate-x-1 transition-transform" />
+          <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-1 transition-transform" />
         </div>
       </div>
 
-      {/* Main KPI Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {/* Total Iuran Masuk */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-amber-400 transition-colors">
+      {/* 4 Main Cash Flow KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Pemasukan */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-emerald-400 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Total Iuran Masuk
+              Total Pemasukan Kas
             </span>
-            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
+            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-800">
               <ArrowDownLeft className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-lg sm:text-2xl font-black text-slate-900 mt-2 font-mono">
+          <div className="text-lg sm:text-2xl font-black text-emerald-700 mt-2 font-mono">
             {formatCurrency(totalIncome)}
           </div>
-          <p className="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" /> Pemasukan kumulatif kas
+          <p className="text-[11px] text-slate-500 font-medium mt-1">
+            {transactions.filter(t => t.type === 'income').length} Transaksi Pemasukan
           </p>
         </div>
 
@@ -235,17 +304,17 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
         <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs hover:border-amber-400 transition-colors">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Total Pengeluaran
+              Total Pengeluaran Kas
             </span>
-            <div className="p-2 rounded-xl bg-red-100 text-red-700">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
               <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-lg sm:text-2xl font-black text-slate-900 mt-2 font-mono">
+          <div className="text-lg sm:text-2xl font-black text-amber-800 mt-2 font-mono">
             {formatCurrency(totalExpense)}
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Operasional, ATK, Rapat & Kegiatan
+          <p className="text-[11px] text-slate-500 font-medium mt-1">
+            {transactions.filter(t => t.type === 'expense').length} Transaksi Pengeluaran
           </p>
         </div>
 
@@ -286,215 +355,328 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
         </div>
       </div>
 
-      {/* Iuran Bulan Ini (Oktober 2026) Deep Dive */}
-      <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-xs">
+      {/* Synchronized Potensi Penerimaan & Realisasi Kas Section */}
+      <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-extrabold text-xs">
-                Periode Berjalan: {MONTH_NAMES[currentMonth - 1]} {currentYear}
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-xs">
+                📊 Sinkronisasi Potensi Penerimaan
               </span>
               <span className="text-xs text-slate-500 font-medium">
-                (Tarif: {formatCurrency(settings.monthlyFee)}/anggota)
+                (Tarif Wajib: {formatCurrency(settings.monthlyFee)} /anggota /bln)
               </span>
             </div>
             <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-1">
-              Rekapitulasi Iuran Bulan Ini
+              Data Potensi Penerimaan & Realisasi Iuran DPC
             </h2>
           </div>
 
-          <button
-            onClick={() => onNavigate('matrix-12')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors shadow-xs"
-          >
-            Buka Matrix 12 Bulan
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-            <p className="text-xs text-slate-500 font-bold uppercase">Potensi Penerimaan</p>
-            <p className="text-xl font-black text-slate-900 font-mono mt-1">
-              {formatCurrency(totalPotentialThisMonth)}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">{activeCount} Anggota Aktif</p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
-            <p className="text-xs text-emerald-800 font-bold uppercase flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Sudah Bayar (Lunas)
-            </p>
-            <p className="text-xl font-black text-emerald-700 font-mono mt-1">
-              {paidCountMonth} <span className="text-sm font-semibold">Anggota</span>
-            </p>
-            <p className="text-[11px] text-emerald-600 mt-0.5">
-              Terkumpul: {formatCurrency(totalDuesThisMonth)}
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-red-50 border border-red-200">
-            <p className="text-xs text-red-800 font-bold uppercase flex items-center gap-1">
-              <XCircle className="w-3.5 h-3.5 text-red-600" /> Belum Bayar
-            </p>
-            <p className="text-xl font-black text-red-700 font-mono mt-1">
-              {unpaidCountMonth} <span className="text-sm font-semibold">Anggota</span>
-            </p>
-            <p className="text-[11px] text-red-600 mt-0.5">
-              Belum masuk: {formatCurrency(unpaidCountMonth * settings.monthlyFee)}
-            </p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300">
-            <p className="text-xs text-amber-900 font-bold uppercase flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-amber-600" /> Menunggu Verifikasi
-            </p>
-            <p className="text-xl font-black text-amber-800 font-mono mt-1">
-              {pendingCountMonth} <span className="text-sm font-semibold">Anggota</span>
-            </p>
-            <p className="text-[11px] text-amber-700 mt-0.5">
-              Nilai: {formatCurrency(pendingCountMonth * settings.monthlyFee)}
-            </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onNavigate('rekapitulasi')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              Rekapitulasi Iuran
+            </button>
+            <button
+              onClick={() => onNavigate('matrix-12')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors shadow-xs cursor-pointer"
+            >
+              Matrix 12 Bulan
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Compliance Progress Bar */}
-        <div className="mt-6 pt-5 border-t border-slate-100">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
-            <span>Tingkat Kepatuhan Pembayaran Bulan Ini:</span>
-            <span className="text-emerald-700 font-black text-sm">{complianceRateThisMonth}%</span>
-          </div>
-          <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden flex">
-            <div
-              style={{ width: `${complianceRateThisMonth}%` }}
-              className="bg-emerald-500 h-full transition-all duration-500"
-            />
-            <div
-              style={{ width: `${(pendingCountMonth / (activeCount || 1)) * 100}%` }}
-              className="bg-amber-400 h-full"
-            />
-          </div>
-          <div className="flex items-center gap-4 mt-2 text-[11px] text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span>Lunas ({paidCountMonth})</span>
+        {/* 2 Comparison Cards: Bulan Berjalan vs Akumulasi Sejak Jan 2025 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Card 1: Potensi Bulan Berjalan */}
+          <div className="p-5 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Periode Bulan Ini
+                </span>
+                <h4 className="font-extrabold text-slate-900 text-sm">
+                  {currentMonthName} {currentYear}
+                </h4>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-xs font-mono font-bold text-slate-700">
+                {activeCount} Anggota Aktif
+              </span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-              <span>Verifikasi ({pendingCountMonth})</span>
+
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="p-3 rounded-xl bg-white border border-slate-200/80">
+                <span className="text-[10px] text-slate-500 font-bold uppercase block">Potensi Masuk</span>
+                <span className="font-black font-mono text-slate-900 text-sm mt-0.5 block">
+                  {formatCurrency(totalPotentialThisMonth)}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-[10px] text-emerald-800 font-bold uppercase block">Lunas Terkumpul</span>
+                <span className="font-black font-mono text-emerald-700 text-sm mt-0.5 block">
+                  {formatCurrency(totalDuesThisMonth)}
+                </span>
+                <span className="text-[10px] text-emerald-600 font-semibold">{paidCountMonth} Org</span>
+              </div>
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+                <span className="text-[10px] text-red-800 font-bold uppercase block">Belum Masuk</span>
+                <span className="font-black font-mono text-red-700 text-sm mt-0.5 block">
+                  {formatCurrency(unpaidCountMonth * settings.monthlyFee)}
+                </span>
+                <span className="text-[10px] text-red-600 font-semibold">{unpaidCountMonth} Org</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-slate-200" />
-              <span>Belum Bayar ({unpaidCountMonth})</span>
+
+            <div>
+              <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
+                <span>Kepatuhan Bulan Ini:</span>
+                <span className="text-emerald-700 font-mono font-black">{complianceRateThisMonth}%</span>
+              </div>
+              <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden flex">
+                <div
+                  style={{ width: `${complianceRateThisMonth}%` }}
+                  className="bg-emerald-500 h-full transition-all duration-500"
+                />
+                <div
+                  style={{ width: `${(pendingCountMonth / (activeCount || 1)) * 100}%` }}
+                  className="bg-amber-400 h-full"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Akumulasi Potensi Sejak Jan 2025 s.d. Sekarang */}
+          <div className="p-5 rounded-2xl bg-emerald-950 text-white space-y-4 relative overflow-hidden">
+            <div className="absolute right-0 top-0 w-48 h-48 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+
+            <div className="flex items-center justify-between relative z-10">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
+                  Akumulasi Kalender Berjalan
+                </span>
+                <h4 className="font-extrabold text-white text-sm">
+                  Januari 2025 s.d. {currentMonthName} {currentYear} ({totalElapsedMonths} Bulan)
+                </h4>
+              </div>
+              <span className="px-2.5 py-1 rounded-xl bg-white/10 border border-white/20 text-xs font-mono font-bold text-amber-300">
+                {cumulativeCollectionRate}% Realisasi
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-xs relative z-10">
+              <div className="p-3 rounded-xl bg-white/10 border border-white/10">
+                <span className="text-[10px] text-emerald-300 font-bold uppercase block">Total Potensi</span>
+                <span className="font-black font-mono text-white text-sm mt-0.5 block">
+                  {formatCurrency(totalCumulativePotential)}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30">
+                <span className="text-[10px] text-emerald-300 font-bold uppercase block">Kas Terkumpul</span>
+                <span className="font-black font-mono text-emerald-300 text-sm mt-0.5 block">
+                  {formatCurrency(totalDuesCollectedReal)}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-red-500/20 border border-red-500/30">
+                <span className="text-[10px] text-red-300 font-bold uppercase block">Total Tunggakan</span>
+                <span className="font-black font-mono text-red-300 text-sm mt-0.5 block">
+                  {formatCurrency(totalArrearsAll)}
+                </span>
+              </div>
+            </div>
+
+            <div className="relative z-10">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-200 mb-1.5">
+                <span>Rasio Realisasi Kas Iuran:</span>
+                <span className="text-amber-300 font-mono font-black">{cumulativeCollectionRate}%</span>
+              </div>
+              <div className="w-full bg-white/15 h-2.5 rounded-full overflow-hidden flex">
+                <div
+                  style={{ width: `${cumulativeCollectionRate}%` }}
+                  className="bg-emerald-400 h-full transition-all duration-500"
+                />
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Financial Bar Chart & Organization Distribution */}
+      {/* Financial Bar Chart & Organization Distribution (100% Real-Time Integrated) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Income vs Expense Monthly Chart */}
-        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-black text-slate-900 text-base">
-                Grafik Pemasukan & Pengeluaran 2026
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Perbandingan arus kas bulanan DPC Patelki KKU
-              </p>
+        {/* Income vs Expense Monthly Chart (Integrated from `transactions`) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-600" />
+                  <h3 className="font-black text-slate-900 text-base">
+                    Grafik Pemasukan & Pengeluaran Kas
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Arus kas aktual dari catatan pembukuan transaksi DPC
+                </p>
+              </div>
+
+              {/* Year Selector for Chart */}
+              <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+                {[2025, 2026, 2027, 2028].map(yr => (
+                  <button
+                    key={yr}
+                    type="button"
+                    onClick={() => setChartYear(yr)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                      chartYear === yr
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {yr}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs font-semibold">
+
+            {/* Chart Summary Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-4 text-xs">
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                <span className="text-[10px] font-bold text-emerald-800 uppercase block">Total Masuk {chartYear}</span>
+                <span className="font-black font-mono text-emerald-700 text-sm mt-0.5 block">
+                  {formatCurrency(chartTotalIncome)}
+                </span>
+              </div>
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
+                <span className="text-[10px] font-bold text-amber-900 uppercase block">Total Keluar {chartYear}</span>
+                <span className="font-black font-mono text-amber-800 text-sm mt-0.5 block">
+                  {formatCurrency(chartTotalExpense)}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-[10px] font-bold text-slate-600 uppercase block">Net Surplus {chartYear}</span>
+                <span className={`font-black font-mono text-sm mt-0.5 block ${chartNetSurplus >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                  {formatCurrency(chartNetSurplus)}
+                </span>
+              </div>
+            </div>
+
+            {/* Dynamic Monthly Bar Visualization */}
+            <div className="h-60 flex items-end justify-between gap-1 sm:gap-2 pt-6 pb-2 px-1 border-b border-slate-100">
+              {monthlyData.map(item => {
+                const incomeHeight = item.income > 0 ? (item.income / maxChartVal) * 100 : 0;
+                const expenseHeight = item.expense > 0 ? (item.expense / maxChartVal) * 100 : 0;
+
+                return (
+                  <div key={item.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
+                    <div className="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full">
+                      {/* Income Bar */}
+                      <div
+                        style={{ height: `${Math.max(incomeHeight, item.income > 0 ? 8 : 2)}%` }}
+                        className={`w-1/2 max-w-[16px] rounded-t-md transition-all relative ${
+                          item.income > 0 ? 'bg-emerald-500 group-hover:bg-emerald-600' : 'bg-slate-200'
+                        }`}
+                      >
+                        {item.income > 0 && (
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
+                            Masuk: {formatCurrency(item.income)}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Expense Bar */}
+                      <div
+                        style={{ height: `${Math.max(expenseHeight, item.expense > 0 ? 8 : 2)}%` }}
+                        className={`w-1/2 max-w-[16px] rounded-t-md transition-all relative ${
+                          item.expense > 0 ? 'bg-amber-400 group-hover:bg-amber-500' : 'bg-slate-200'
+                        }`}
+                      >
+                        {item.expense > 0 && (
+                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
+                            Keluar: {formatCurrency(item.expense)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 group-hover:text-slate-900">
+                      {item.month}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-md bg-emerald-500" />
-                <span className="text-slate-700">Masuk</span>
+                <span className="text-slate-700 font-semibold">Pemasukan Kas</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-md bg-amber-500" />
-                <span className="text-slate-700">Keluar</span>
+                <span className="w-3 h-3 rounded-md bg-amber-400" />
+                <span className="text-slate-700 font-semibold">Pengeluaran Kas</span>
               </div>
             </div>
-          </div>
-
-          {/* Bar Visualization */}
-          <div className="h-64 flex items-end justify-between gap-2 pt-6 pb-2 px-2 border-b border-slate-100">
-            {monthlyData.map(item => {
-              const incomeHeight = (item.income / maxChartVal) * 100;
-              const expenseHeight = (item.expense / maxChartVal) * 100;
-
-              return (
-                <div key={item.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
-                  <div className="w-full flex items-end justify-center gap-1 h-full">
-                    {/* Income Bar */}
-                    <div
-                      style={{ height: `${Math.max(incomeHeight, 6)}%` }}
-                      className="w-1/2 max-w-[18px] bg-emerald-500 group-hover:bg-emerald-600 rounded-t-md transition-all relative"
-                    >
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                        Masuk: {formatCurrency(item.income)}
-                      </div>
-                    </div>
-                    {/* Expense Bar */}
-                    <div
-                      style={{ height: `${Math.max(expenseHeight, 6)}%` }}
-                      className="w-1/2 max-w-[18px] bg-amber-400 group-hover:bg-amber-500 rounded-t-md transition-all relative"
-                    >
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                        Keluar: {formatCurrency(item.expense)}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-500 group-hover:text-slate-900">
-                    {item.month}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-            <span>Januari – Oktober 2026</span>
-            <span className="font-semibold text-emerald-700">Surplus Kas Terjaga</span>
+            <button
+              onClick={() => onNavigate('buku-kas')}
+              className="text-emerald-700 hover:text-emerald-900 font-bold hover:underline"
+            >
+              Lihat Rincian Buku Kas →
+            </button>
           </div>
         </div>
 
-        {/* Institution Distribution Card */}
+        {/* Institution Distribution Card (100% Real-Time Integrated from `members`) */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col justify-between">
           <div>
-            <h3 className="font-black text-slate-900 text-base">Sebaran Instansi Anggota</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {activeCount} Ahli Laboratorium Medik terdaftar di KKU
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-black text-slate-900 text-base">Sebaran Instansi Anggota</h3>
+              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono text-[11px] font-bold">
+                {instansiDistribution.length} Instansi
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Distribusi {totalMemberCount} Ahli Laboratorium Medik terdaftar di KKU
             </p>
 
-            <div className="mt-5 space-y-3">
-              {[
-                { name: 'RSUD Sultan Muhammad Jamaludin I', count: 4, pct: 33 },
-                { name: 'Puskesmas Teluk Batang', count: 2, pct: 17 },
-                { name: 'Puskesmas Sukadana', count: 2, pct: 17 },
-                { name: 'Puskesmas Simpang Hilir', count: 1, pct: 8 },
-                { name: 'Puskesmas Seponti', count: 1, pct: 8 },
-                { name: 'Puskesmas Pulau Maya & Karimata', count: 2, pct: 17 },
-              ].map(inst => (
-                <div key={inst.name} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                    <span className="truncate pr-2">{inst.name}</span>
-                    <span className="font-bold text-slate-900 shrink-0">{inst.count} ATLM</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div
-                      style={{ width: `${inst.pct}%` }}
-                      className="bg-emerald-600 h-full rounded-full"
-                    />
-                  </div>
+            <div className="mt-4 space-y-3 max-h-72 overflow-y-auto pr-1 custom-scrollbar">
+              {instansiDistribution.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-xs">
+                  <Building className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  Belum ada data instansi anggota.
                 </div>
-              ))}
+              ) : (
+                instansiDistribution.map(inst => (
+                  <div key={inst.name} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                      <span className="truncate pr-2 font-bold text-slate-900">{inst.name}</span>
+                      <span className="font-mono font-bold text-emerald-800 shrink-0">
+                        {inst.total} ATLM ({inst.percentage}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div
+                        style={{ width: `${inst.percentage}%` }}
+                        className="bg-emerald-600 h-full rounded-full transition-all duration-300"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-400">
+                      <span>{inst.active} Aktif {inst.nonaktif > 0 ? `• ${inst.nonaktif} Nonaktif` : ''}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
           <div className="mt-6 pt-4 border-t border-slate-100">
             <button
               onClick={() => onNavigate('anggota-list')}
-              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <Users className="w-3.5 h-3.5 text-emerald-600" />
               Kelola Data Anggota Lengkap
@@ -512,7 +694,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           <button
             onClick={() => onNavigate('verifikasi')}
-            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group"
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
           >
             <Clock className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform mb-2" />
             <p className="text-xs font-extrabold text-slate-900">Verifikasi Pembayaran</p>
@@ -521,7 +703,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
 
           <button
             onClick={() => onNavigate('tunggakan')}
-            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group"
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
           >
             <MessageSquare className="w-5 h-5 text-emerald-600 group-hover:scale-110 transition-transform mb-2" />
             <p className="text-xs font-extrabold text-slate-900">Tagih via WhatsApp</p>
@@ -530,7 +712,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
 
           <button
             onClick={() => onNavigate('kas-keluar')}
-            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group"
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
           >
             <ArrowUpRight className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform mb-2" />
             <p className="text-xs font-extrabold text-slate-900">Catat Pengeluaran Kas</p>
@@ -539,7 +721,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
 
           <button
             onClick={() => onNavigate('laporan')}
-            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group"
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
           >
             <FileSpreadsheet className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform mb-2" />
             <p className="text-xs font-extrabold text-slate-900">Laporan Transparansi</p>
