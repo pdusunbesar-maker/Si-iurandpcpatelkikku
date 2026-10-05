@@ -85,6 +85,7 @@ export interface SocialServiceExpense {
   item: string;
   amount: number;
   notes?: string;
+  proofUrl?: string; // Bukti Nota / Kwitansi Pengeluaran
 }
 
 export interface SocialService {
@@ -92,13 +93,15 @@ export interface SocialService {
   title: string;
   date: string;
   location: string;
+  picName?: string; // Penanggung Jawab / Ketua Panitia
   fundSource: string;
   totalBudget: number;
   totalSpent: number;
   beneficiaries: string; // e.g., "150 Warga Desa Sukadana"
   description: string;
-  documentationUrls: string[];
-  expenses: SocialServiceExpense[];
+  documentationUrls: string[]; // Dokumentasi Kegiatan Baksos
+  expenses: SocialServiceExpense[]; // Rincian Nota & Bukti Transaksi
+  lpjNotes?: string; // Catatan Hasil Pertanggungjawaban LPJ
   createdAt: string;
 }
 

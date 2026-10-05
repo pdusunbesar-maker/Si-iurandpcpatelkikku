@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { SocialService } from '../../types';
+import { SocialService, SocialServiceExpense } from '../../types';
 import * as XLSX from 'xlsx';
+import { PatelkiLogo } from '../../components/PatelkiLogo';
 import {
   HeartHandshake,
   PlusCircle,
@@ -17,45 +18,162 @@ import {
   Image as ImageIcon,
   Plus,
   X,
+  FileText,
+  Receipt,
+  UserCheck,
+  Building,
+  Info,
+  ExternalLink,
+  Award,
+  Sparkles,
 } from 'lucide-react';
 
 export const BaktiSosial: React.FC = () => {
-  const { socialServices, addSocialService, deleteSocialService, formatCurrency } = useApp();
+  const { socialServices, addSocialService, deleteSocialService, settings, formatCurrency } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [viewingDetail, setViewingDetail] = useState<SocialService | null>(null);
+  const [viewingLPJ, setViewingLPJ] = useState<SocialService | null>(null);
+  const [viewingProofImage, setViewingProofImage] = useState<string | null>(null);
 
   // New social service state
-  const [newSoc, setNewSoc] = useState<Omit<SocialService, 'id' | 'createdAt'>>({
+  const [newSoc, setNewSoc] = useState<{
+    title: string;
+    date: string;
+    location: string;
+    picName: string;
+    fundSource: string;
+    totalBudget: number;
+    totalSpent: number;
+    beneficiaries: string;
+    description: string;
+    lpjNotes: string;
+    documentationUrls: string[];
+    expenses: SocialServiceExpense[];
+  }>({
     title: '',
     date: new Date().toISOString().split('T')[0],
-    location: '',
-    fundSource: 'Kas DPC Patelki & Donasi Mitra',
-    totalBudget: 3000000,
-    totalSpent: 3000000,
-    beneficiaries: '',
-    description: '',
+    location: 'Sukadana, Kab. Kayong Utara',
+    picName: settings.ketuaName || 'Panitia Baksos DPC PATELKI KKU',
+    fundSource: 'Kas DPC PATELKI KKU & Donasi Mitra',
+    totalBudget: 3500000,
+    totalSpent: 3500000,
+    beneficiaries: '150 Warga Masyarkat & Lansia',
+    description: 'Pemeriksaan Kesehatan & Skrining Laboratorium Medis (Gula Darah, Kolesterol, Asam Urat) Gratis serta Edukasi Kesehatan ATLM.',
+    lpjNotes: 'Kegiatan berjalan lancar, tertib, dan mendapatkan apresiasi tinggi dari perangkat desa dan warga setempat.',
     documentationUrls: [
-      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=600'
+      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=800',
+      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
     ],
     expenses: [
-      { id: '1', item: 'Strip Tes Lab & BHP Medis', amount: 1800000 },
-      { id: '2', item: 'Transport & Logistik Relawan', amount: 700000 },
-      { id: '3', item: 'Konsumsi & Snack Warga', amount: 500000 },
+      { id: 'exp-1', item: 'Strip Tes Lab & Reagen BHP Medis', amount: 2000000, notes: 'Nota Medis Apotek Sehat', proofUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600' },
+      { id: 'exp-2', item: 'Transport & Logistik Relawan ATLM', amount: 800000, notes: 'BBM & Sewa Kendaraan', proofUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&q=80&w=600' },
+      { id: 'exp-3', item: 'Konsumsi & Snack Warga/Panitia', amount: 700000, notes: 'Katering Ibu Desa', proofUrl: '' },
     ],
   });
 
+  // State for dynamic item expense in modal form
+  const [tempExpenseItem, setTempExpenseItem] = useState({ item: '', amount: 0, notes: '', proofUrl: '' });
+  const [tempDocUrl, setTempDocUrl] = useState('');
+
   const totalSpentAll = socialServices.reduce((sum, s) => sum + s.totalSpent, 0);
+  const totalBeneficiariesApprox = socialServices.length * 150;
 
   const filteredList = socialServices.filter(s => {
     const q = searchQuery.toLowerCase();
     return (
       s.title.toLowerCase().includes(q) ||
       s.location.toLowerCase().includes(q) ||
-      s.beneficiaries.toLowerCase().includes(q)
+      s.beneficiaries.toLowerCase().includes(q) ||
+      (s.picName && s.picName.toLowerCase().includes(q))
     );
   });
+
+  const handleAddExpenseItem = () => {
+    if (!tempExpenseItem.item || tempExpenseItem.amount <= 0) {
+      alert('Nama item dan nominal pengeluaran wajib diisi!');
+      return;
+    }
+    const newExpList = [
+      ...newSoc.expenses,
+      {
+        id: `exp-${Date.now()}`,
+        item: tempExpenseItem.item,
+        amount: Number(tempExpenseItem.amount),
+        notes: tempExpenseItem.notes,
+        proofUrl: tempExpenseItem.proofUrl,
+      },
+    ];
+
+    const newTotalSpent = newExpList.reduce((sum, i) => sum + i.amount, 0);
+
+    setNewSoc(prev => ({
+      ...prev,
+      expenses: newExpList,
+      totalSpent: newTotalSpent,
+      totalBudget: prev.totalBudget < newTotalSpent ? newTotalSpent : prev.totalBudget,
+    }));
+
+    setTempExpenseItem({ item: '', amount: 0, notes: '', proofUrl: '' });
+  };
+
+  const handleRemoveExpenseItem = (id: string) => {
+    const newExpList = newSoc.expenses.filter(e => e.id !== id);
+    const newTotalSpent = newExpList.reduce((sum, i) => sum + i.amount, 0);
+
+    setNewSoc(prev => ({
+      ...prev,
+      expenses: newExpList,
+      totalSpent: newTotalSpent,
+    }));
+  };
+
+  const handleAddDocUrl = () => {
+    if (!tempDocUrl.trim()) return;
+    setNewSoc(prev => ({
+      ...prev,
+      documentationUrls: [...prev.documentationUrls, tempDocUrl.trim()],
+    }));
+    setTempDocUrl('');
+  };
+
+  const handleRemoveDocUrl = (index: number) => {
+    setNewSoc(prev => ({
+      ...prev,
+      documentationUrls: prev.documentationUrls.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleFileUploadDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          setNewSoc(prev => ({
+            ...prev,
+            documentationUrls: [...prev.documentationUrls, reader.result as string],
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileUploadReceipt = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (reader.result) {
+        setTempExpenseItem(prev => ({ ...prev, proofUrl: reader.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleCreateSocial = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,9 +183,20 @@ export const BaktiSosial: React.FC = () => {
     }
 
     const calculatedSpent = newSoc.expenses.reduce((sum, item) => sum + item.amount, 0);
+
     addSocialService({
-      ...newSoc,
-      totalSpent: calculatedSpent || newSoc.totalSpent,
+      title: newSoc.title,
+      date: newSoc.date,
+      location: newSoc.location,
+      picName: newSoc.picName,
+      fundSource: newSoc.fundSource,
+      totalBudget: Number(newSoc.totalBudget),
+      totalSpent: calculatedSpent || Number(newSoc.totalSpent),
+      beneficiaries: newSoc.beneficiaries,
+      description: newSoc.description,
+      lpjNotes: newSoc.lpjNotes,
+      documentationUrls: newSoc.documentationUrls,
+      expenses: newSoc.expenses,
     });
 
     setShowAddModal(false);
@@ -76,19 +205,23 @@ export const BaktiSosial: React.FC = () => {
   const handleExportExcel = () => {
     const exportData = socialServices.map((s, idx) => ({
       No: idx + 1,
-      'Nama Kegiatan': s.title,
+      'Nama Kegiatan Baksos': s.title,
       Tanggal: s.date,
       Lokasi: s.location,
+      'Penanggung Jawab (PIC)': s.picName || '-',
       'Sumber Dana': s.fundSource,
       'Total Anggaran (Rp)': s.totalBudget,
       'Total Realisasi (Rp)': s.totalSpent,
       'Penerima Manfaat': s.beneficiaries,
-      Deskripsi: s.description,
+      'Deskripsi / Hasil': s.description,
+      'Catatan LPJ': s.lpjNotes || '-',
+      'Jumlah Item Pengeluaran': s.expenses.length,
+      'Jumlah Dokumentasi Foto': s.documentationUrls.length,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data_Bakti_Sosial');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'LPJ_Bakti_Sosial');
     XLSX.writeFile(workbook, `Laporan_Baksos_Patelki_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -102,11 +235,11 @@ export const BaktiSosial: React.FC = () => {
               Bakti Sosial & Pengabdian Masyarakat
             </h1>
             <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-xs font-black">
-              {socialServices.length} Kegiatan
+              {socialServices.length} Kegiatan Terdaftar
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Akuntabilitas pertanggungjawaban kegiatan sosial, pemeriksaan laboratorium gratis, dan tanggap bencana.
+            Pencatatan resmi, rincian anggaran, bukti nota transaksi, dokumentasi lapangan, dan Laporan Pertanggungjawaban (LPJ).
           </p>
         </div>
 
@@ -117,13 +250,13 @@ export const BaktiSosial: React.FC = () => {
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition-colors shadow-xs cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            Catat Kegiatan Baksos
+            Input LPJ Baksos Baru
           </button>
 
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Export Excel
@@ -132,7 +265,7 @@ export const BaktiSosial: React.FC = () => {
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             Cetak
@@ -140,7 +273,7 @@ export const BaktiSosial: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Banner */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-indigo-600 text-white p-5 rounded-3xl shadow-xl shadow-indigo-600/15 flex items-center justify-between">
           <div>
@@ -157,10 +290,10 @@ export const BaktiSosial: React.FC = () => {
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Kegiatan Pengabdian
+              Program Pengabdian LPJ
             </p>
             <p className="text-2xl font-black text-slate-900 font-mono mt-1">
-              {socialServices.length} <span className="text-xs font-semibold text-slate-500">Program</span>
+              {socialServices.length} <span className="text-xs font-semibold text-slate-500">Kegiatan Terlaksana</span>
             </p>
           </div>
           <CheckCircle2 className="w-8 h-8 text-emerald-600" />
@@ -172,148 +305,300 @@ export const BaktiSosial: React.FC = () => {
               Penerima Manfaat
             </p>
             <p className="text-2xl font-black text-emerald-700 font-mono mt-1">
-              245+ <span className="text-xs font-semibold text-slate-500">Warga KKU</span>
+              {totalBeneficiariesApprox}+ <span className="text-xs font-semibold text-slate-500">Warga KKU</span>
             </p>
           </div>
           <Users className="w-8 h-8 text-amber-500" />
         </div>
       </div>
 
-      {/* Social Service Cards List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredList.map(soc => (
-          <div
-            key={soc.id}
-            className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:border-indigo-400 transition-colors"
-          >
-            <div>
-              {/* Photo Banner if available */}
-              {soc.documentationUrls.length > 0 && (
-                <div className="h-44 w-full relative overflow-hidden bg-slate-100">
-                  <img
-                    src={soc.documentationUrls[0]}
-                    alt={soc.title}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-bold px-2.5 py-1 rounded-full backdrop-blur-xs flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-amber-400" /> {soc.date}
-                  </div>
-                </div>
-              )}
-
-              <div className="p-5 sm:p-6 space-y-3">
-                <h3 className="font-extrabold text-slate-900 text-base leading-snug">
-                  {soc.title}
-                </h3>
-
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <MapPin className="w-4 h-4 text-red-500 shrink-0" />
-                  <span className="font-semibold">{soc.location}</span>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-600">
-                  <Users className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>Penerima: <strong className="text-slate-900">{soc.beneficiaries}</strong></span>
-                </div>
-
-                <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
-                  {soc.description}
-                </p>
-
-                {/* Expense Breakdown Pill */}
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1 text-xs">
-                  <div className="flex justify-between font-bold text-slate-700">
-                    <span>Sumber Dana:</span>
-                    <span className="text-indigo-800">{soc.fundSource}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-slate-900">
-                    <span>Total Realisasi Pengeluaran:</span>
-                    <span className="font-mono text-emerald-700">{formatCurrency(soc.totalSpent)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Bar */}
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setViewingDetail(soc)}
-                className="text-xs font-bold text-indigo-700 hover:text-indigo-900"
-              >
-                Lihat Rincian Anggaran & Dokumentasi →
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm(`Hapus kegiatan "${soc.title}"?`)) {
-                    deleteSocialService(soc.id);
-                  }
-                }}
-                className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
+      {/* Search & Filter */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Cari judul kegiatan, lokasi, penanggung jawab, atau penerima..."
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:border-indigo-500 outline-hidden"
+          />
+        </div>
       </div>
 
-      {/* Detail Modal */}
-      {viewingDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 my-8">
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+      {/* Social Service Program Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {filteredList.length === 0 ? (
+          <div className="col-span-full bg-white p-12 text-center rounded-3xl border border-slate-200 text-slate-400 space-y-3">
+            <HeartHandshake className="w-12 h-12 text-slate-300 mx-auto" />
+            <p className="text-sm font-bold text-slate-700">Belum Ada Catatan Kegiatan Bakti Sosial</p>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Klik tombol "Input LPJ Baksos Baru" untuk mencatat kegiatan baksos, rincian biaya, nota transaksi, dan foto dokumentasi.
+            </p>
+          </div>
+        ) : (
+          filteredList.map(soc => (
+            <div
+              key={soc.id}
+              className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:border-indigo-400 transition-all duration-200"
+            >
               <div>
-                <span className="text-xs font-bold text-indigo-600 uppercase">
-                  Laporan Pertanggungjawaban Bakti Sosial
-                </span>
-                <h3 className="text-lg font-black text-slate-900 mt-0.5">{viewingDetail.title}</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  📅 {viewingDetail.date} • 📍 {viewingDetail.location}
-                </p>
+                {/* Photo Banner if available */}
+                {soc.documentationUrls && soc.documentationUrls.length > 0 ? (
+                  <div className="h-48 w-full relative overflow-hidden bg-slate-100 group">
+                    <img
+                      src={soc.documentationUrls[0]}
+                      alt={soc.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md">
+                      <Calendar className="w-3.5 h-3.5 text-amber-400" /> {soc.date}
+                    </div>
+
+                    <div className="absolute bottom-3 left-3 bg-indigo-950/80 text-indigo-200 text-[11px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs flex items-center gap-1">
+                      <ImageIcon className="w-3.5 h-3.5 text-indigo-400" /> {soc.documentationUrls.length} Foto Dokumentasi
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-28 w-full bg-gradient-to-r from-indigo-900 to-slate-900 p-5 flex items-center justify-between text-white">
+                    <div>
+                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Bakti Sosial & Pengabdian</span>
+                      <span className="text-xs font-bold text-slate-200 mt-1 block">📅 {soc.date}</span>
+                    </div>
+                    <HeartHandshake className="w-8 h-8 text-indigo-300 opacity-80" />
+                  </div>
+                )}
+
+                <div className="p-5 sm:p-6 space-y-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-extrabold text-slate-900 text-base leading-snug">
+                      {soc.title}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <MapPin className="w-4 h-4 text-red-500 shrink-0" />
+                      <span className="truncate font-semibold text-slate-800">{soc.location}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                      <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="truncate font-semibold text-slate-800">{soc.beneficiaries}</span>
+                    </div>
+                  </div>
+
+                  {soc.picName && (
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>Penanggung Jawab: <strong className="text-slate-900">{soc.picName}</strong></span>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                    {soc.description}
+                  </p>
+
+                  {/* Financial Breakdown Pill */}
+                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                    <div className="flex justify-between font-bold text-slate-700">
+                      <span>Sumber Dana:</span>
+                      <span className="text-indigo-800 font-extrabold">{soc.fundSource}</span>
+                    </div>
+                    <div className="flex justify-between items-center font-bold text-slate-900 pt-1 border-t border-slate-200/80">
+                      <span>Realisasi Pengeluaran ({soc.expenses?.length || 0} Item):</span>
+                      <span className="font-mono text-sm text-emerald-700 font-black">{formatCurrency(soc.totalSpent)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={() => setViewingDetail(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              {/* Action Bar */}
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setViewingLPJ(soc)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  Buka LPJ & Bukti Nota Resmi →
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Hapus kegiatan baksos "${soc.title}"?`)) {
+                      deleteSocialService(soc.id);
+                    }
+                  }}
+                  className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition-colors cursor-pointer"
+                  title="Hapus Data Baksos"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Official LPJ Document Modal */}
+      {viewingLPJ && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 my-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            {/* Action Bar inside LPJ Modal */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200 no-print">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 text-indigo-900 font-extrabold text-xs">
+                <Award className="w-4 h-4 text-indigo-600" />
+                Laporan Pertanggungjawaban (LPJ) Resmi
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Cetak LPJ PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewingLPJ(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="py-4 space-y-4 text-xs">
-              <div>
-                <h4 className="font-bold text-slate-900 mb-1">Deskripsi Kegiatan</h4>
-                <p className="text-slate-600 leading-relaxed">{viewingDetail.description}</p>
+            {/* Print Envelope LPJ Header Letterhead */}
+            <div className="mt-4 p-6 bg-white border border-slate-200 rounded-2xl space-y-6">
+              <div className="flex items-center justify-between pb-4 border-b-2 border-slate-900 gap-4">
+                <div className="flex items-center gap-3">
+                  <PatelkiLogo className="w-14 h-14" />
+                  <div>
+                    <h3 className="font-black text-slate-900 text-sm sm:text-base tracking-tight uppercase">
+                      {settings.organizationName || 'PERSATUAN AHLI TEKNOLOGI LABORATORIUM MEDIK INDONESIA'}
+                    </h3>
+                    <h4 className="font-bold text-emerald-800 text-xs sm:text-sm">
+                      DPC PATELKI KABUPATEN KAYONG UTARA
+                    </h4>
+                    <p className="text-[10px] text-slate-500 mt-0.5 max-w-lg">
+                      {settings.address} • Email: {settings.contactEmail}
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* Expenses table */}
-              <div>
-                <h4 className="font-bold text-slate-900 mb-2">Rincian Item Pengeluaran</h4>
+              <div className="text-center space-y-1 py-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight">
+                  LAPORAN PERTANGGUNGJAWABAN (LPJ)
+                </h2>
+                <p className="text-xs font-bold text-indigo-800 uppercase">
+                  PROGRAM BAKTI SOSIAL & PENGABDIAN MASYARAKAT
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Nomor LPJ: LPJ-BAKSOS/{viewingLPJ.date.replace(/-/g, '')}/{viewingLPJ.id.slice(-4).toUpperCase()}
+                </p>
+              </div>
+
+              {/* General Metadata Table */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs p-4 bg-slate-50 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Nama Program/Kegiatan</span>
+                  <span className="font-extrabold text-slate-900 text-xs">{viewingLPJ.title}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Tanggal Pelaksanaan</span>
+                  <span className="font-extrabold text-slate-900 text-xs">{viewingLPJ.date}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Lokasi Pelaksanaan</span>
+                  <span className="font-semibold text-slate-800 text-xs">{viewingLPJ.location}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Penanggung Jawab (PIC)</span>
+                  <span className="font-semibold text-slate-800 text-xs">{viewingLPJ.picName || settings.ketuaName}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Sumber Pendanaan</span>
+                  <span className="font-semibold text-indigo-800 text-xs">{viewingLPJ.fundSource}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Penerima Manfaat</span>
+                  <span className="font-semibold text-emerald-800 text-xs">{viewingLPJ.beneficiaries}</span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1 text-xs">
+                <h5 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">I. Latar Belakang & Deskripsi Pelaksanaan</h5>
+                <p className="text-slate-700 leading-relaxed p-3 bg-white rounded-xl border border-slate-200">
+                  {viewingLPJ.description}
+                </p>
+              </div>
+
+              {/* Itemized Expenses & Proof Receipts Table */}
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <h5 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+                    II. Rincian Pengeluaran Dana & Bukti Nota Transaksi
+                  </h5>
+                  <span className="text-[11px] font-bold text-slate-500">
+                    Total: {viewingLPJ.expenses?.length || 0} Item
+                  </span>
+                </div>
+
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-100 font-bold text-slate-700 text-[11px]">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
                       <tr>
-                        <th className="p-2.5">Item / Kebutuhan</th>
-                        <th className="p-2.5 text-right">Nominal</th>
+                        <th className="p-2.5 w-10 text-center">No</th>
+                        <th className="p-2.5">Item Rincian Kebutuhan</th>
+                        <th className="p-2.5">Keterangan / Nota</th>
+                        <th className="p-2.5 text-center no-print">Bukti Nota</th>
+                        <th className="p-2.5 text-right">Nominal (Rp)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {viewingDetail.expenses.map((exp, i) => (
-                        <tr key={i}>
-                          <td className="p-2.5 font-medium">{exp.item}</td>
-                          <td className="p-2.5 text-right font-mono font-bold text-slate-800">
-                            {formatCurrency(exp.amount)}
+                      {(!viewingLPJ.expenses || viewingLPJ.expenses.length === 0) ? (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-slate-400">
+                            Tidak ada rincian item pengeluaran khusus.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        viewingLPJ.expenses.map((exp, idx) => (
+                          <tr key={exp.id || idx} className="hover:bg-slate-50">
+                            <td className="p-2.5 text-center font-bold text-slate-400">{idx + 1}</td>
+                            <td className="p-2.5 font-bold text-slate-900">{exp.item}</td>
+                            <td className="p-2.5 text-slate-600">{exp.notes || '-'}</td>
+                            <td className="p-2.5 text-center no-print">
+                              {exp.proofUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingProofImage(exp.proofUrl || null)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[10px]"
+                                >
+                                  <Receipt className="w-3 h-3 text-indigo-600" /> Lihat Nota
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Tanpa Foto Nota</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                              {formatCurrency(exp.amount)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
-                    <tfoot className="bg-slate-50 font-black text-slate-900 border-t border-slate-200">
+                    <tfoot className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
                       <tr>
-                        <td className="p-2.5">Total Realisasi</td>
-                        <td className="p-2.5 text-right font-mono text-emerald-700">
-                          {formatCurrency(viewingDetail.totalSpent)}
+                        <td colSpan={3} className="p-2.5 text-right font-extrabold uppercase">Total Realisasi Pengeluaran:</td>
+                        <td colSpan={2} className="p-2.5 text-right font-mono text-emerald-800 text-sm font-black">
+                          {formatCurrency(viewingLPJ.totalSpent)}
                         </td>
                       </tr>
                     </tfoot>
@@ -321,144 +606,403 @@ export const BaktiSosial: React.FC = () => {
                 </div>
               </div>
 
-              {/* Photos Gallery */}
-              {viewingDetail.documentationUrls.length > 0 && (
+              {/* Budget vs Realization Variance Analysis */}
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h4 className="font-bold text-slate-900 mb-2">Dokumentasi Kegiatan</h4>
-                  <div className="grid grid-cols-3 gap-2">
-                    {viewingDetail.documentationUrls.map((url, idx) => (
-                      <img
-                        key={idx}
-                        src={url}
-                        alt="Dokumentasi"
-                        className="w-full h-24 object-cover rounded-xl border border-slate-200"
-                      />
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Anggaran vs Realisasi</span>
+                  <span className="font-extrabold text-slate-900 text-xs">
+                    Anggaran: {formatCurrency(viewingLPJ.totalBudget)} | Realisasi: {formatCurrency(viewingLPJ.totalSpent)}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Selisih Varian</span>
+                  <span className="font-mono font-black text-emerald-800 text-sm">
+                    {formatCurrency(viewingLPJ.totalBudget - viewingLPJ.totalSpent)} ({viewingLPJ.totalBudget >= viewingLPJ.totalSpent ? 'Efisiensi Kas' : 'Defisit Tercover'})
+                  </span>
+                </div>
+              </div>
+
+              {/* Documentation Photos Grid */}
+              {viewingLPJ.documentationUrls && viewingLPJ.documentationUrls.length > 0 && (
+                <div className="space-y-2 text-xs">
+                  <h5 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+                    III. Lampiran Dokumentasi Foto Pelaksanaan Baksos
+                  </h5>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {viewingLPJ.documentationUrls.map((url, idx) => (
+                      <div key={idx} className="relative rounded-xl overflow-hidden border border-slate-200 group h-32 bg-slate-100">
+                        <img
+                          src={url}
+                          alt={`Dokumentasi ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[9px] px-2 py-0.5 rounded-md font-bold">
+                          Dokumentasi #{idx + 1}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
-            </div>
 
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
+              {/* LPJ Notes */}
+              {viewingLPJ.lpjNotes && (
+                <div className="space-y-1 text-xs">
+                  <h5 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">IV. Catatan Pertanggungjawaban</h5>
+                  <p className="text-slate-700 leading-relaxed p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+                    {viewingLPJ.lpjNotes}
+                  </p>
+                </div>
+              )}
+
+              {/* Official Signatures Block for LPJ */}
+              <div className="pt-6 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs">
+                <div>
+                  <p className="text-[11px] text-slate-500">Penanggung Jawab Kegiatan,</p>
+                  <div className="h-16 flex items-center justify-center font-bold text-slate-400 italic">
+                    ( Tanda Tangan Resmi )
+                  </div>
+                  <p className="font-bold text-slate-900 underline">{viewingLPJ.picName || settings.ketuaName}</p>
+                  <p className="text-[10px] text-slate-500">Ketua Panitia / PIC Baksos</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] text-slate-500">Mengetahui & Memverifikasi,</p>
+                  <div className="h-16 flex items-center justify-center font-bold text-slate-400 italic">
+                    ( Tanda Tangan Resmi )
+                  </div>
+                  <p className="font-bold text-slate-900 underline">{settings.bendaharaName}</p>
+                  <p className="text-[10px] text-slate-500">Bendahara DPC PATELKI KKU</p>
+                </div>
+
+                <div>
+                  <p className="text-[11px] text-slate-500">Mengesahkan LPJ,</p>
+                  <div className="h-16 flex items-center justify-center font-bold text-slate-400 italic">
+                    ( Tanda Tangan Resmi )
+                  </div>
+                  <p className="font-bold text-slate-900 underline">{settings.ketuaName}</p>
+                  <p className="text-[10px] text-slate-500">Ketua DPC PATELKI KKU</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Proof Receipt Image Preview Modal */}
+      {viewingProofImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-indigo-600" />
+                Foto Nota Bukti Pengeluaran
+              </h4>
               <button
                 type="button"
-                onClick={() => setViewingDetail(null)}
-                className="px-5 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl"
+                onClick={() => setViewingProofImage(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
               >
-                Tutup
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 max-h-96 flex items-center justify-center">
+              <img
+                src={viewingProofImage}
+                alt="Bukti Kwitansi / Nota"
+                className="max-h-96 w-auto object-contain"
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setViewingProofImage(null)}
+                className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl"
+              >
+                Tutup Preview
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Modal */}
+      {/* Add New Bakti Sosial Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 my-8">
-            <h3 className="font-black text-base text-slate-900">Catat Kegiatan Bakti Sosial Baru</h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Masukkan detail pelaksanaan dan anggaran baksos DPC.
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-black text-base text-slate-900">Catat Program Bakti Sosial & LPJ Baru</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Lengkapi data kegiatan, rincian nota pengeluaran, dan foto dokumentasi.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
             <form onSubmit={handleCreateSocial} className="mt-4 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Nama Kegiatan Bakti Sosial *
+                  Nama Kegiatan / Program Baksos *
                 </label>
                 <input
                   type="text"
                   required
                   value={newSoc.title}
                   onChange={e => setNewSoc({ ...newSoc, title: e.target.value })}
-                  placeholder="Contoh: Skrining Lab Penyakit Tidak Menular Gratis di Sukadana"
-                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  placeholder="Contoh: Pemeriksaan Darah & Skrining Diabetes Gratis di Desa Teluk Batang"
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:border-indigo-500 outline-hidden font-semibold"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal Pelaksanaan *</label>
                   <input
                     type="date"
                     required
                     value={newSoc.date}
                     onChange={e => setNewSoc({ ...newSoc, date: e.target.value })}
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden font-semibold"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Lokasi *</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Lokasi Kegiatan *</label>
                   <input
                     type="text"
                     required
                     value={newSoc.location}
                     onChange={e => setNewSoc({ ...newSoc, location: e.target.value })}
-                    placeholder="Balai Desa / Dusun..."
+                    placeholder="Contoh: Balai Desa Sukadana / Puskesmas..."
                     className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Sumber Dana</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Penanggung Jawab (PIC / Panitia)</label>
+                  <input
+                    type="text"
+                    value={newSoc.picName}
+                    onChange={e => setNewSoc({ ...newSoc, picName: e.target.value })}
+                    placeholder="Nama Ketua Panitia Baksos"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Sumber Pendanaan</label>
                   <input
                     type="text"
                     value={newSoc.fundSource}
                     onChange={e => setNewSoc({ ...newSoc, fundSource: e.target.value })}
-                    placeholder="Kas DPC / Donatur"
+                    placeholder="Kas DPC / Donasi Sponsor"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Target Penerima Manfaat</label>
+                  <input
+                    type="text"
+                    value={newSoc.beneficiaries}
+                    onChange={e => setNewSoc({ ...newSoc, beneficiaries: e.target.value })}
+                    placeholder="Contoh: 200 Warga Lansia & Nelayan"
                     className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Penerima / Sasaran</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Total Pagu Anggaran (Rp)</label>
                   <input
-                    type="text"
-                    value={newSoc.beneficiaries}
-                    onChange={e => setNewSoc({ ...newSoc, beneficiaries: e.target.value })}
-                    placeholder="Contoh: 150 Warga Lansia"
-                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                    type="number"
+                    value={newSoc.totalBudget}
+                    onChange={e => setNewSoc({ ...newSoc, totalBudget: Number(e.target.value) })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-mono font-bold outline-hidden"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Total Realisasi Dana (Rp)</label>
-                <input
-                  type="number"
-                  value={newSoc.totalSpent}
-                  onChange={e => setNewSoc({ ...newSoc, totalSpent: Number(e.target.value) })}
-                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-mono font-bold outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi Kegiatan</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Deskripsi & Tujuan Kegiatan</label>
                 <textarea
                   rows={2}
                   value={newSoc.description}
                   onChange={e => setNewSoc({ ...newSoc, description: e.target.value })}
-                  placeholder="Keterangan singkat pelaksanaan..."
+                  placeholder="Penjelasan singkat teknis baksos..."
                   className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              {/* Dynamic Expenses Breakdown Input */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 text-indigo-600" />
+                    Rincian Item Pengeluaran & Nota Transaksi
+                  </span>
+                  <span className="text-xs font-mono font-bold text-emerald-700">
+                    Total: {formatCurrency(newSoc.expenses.reduce((sum, e) => sum + e.amount, 0))}
+                  </span>
+                </div>
+
+                {/* Added expense items list */}
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {newSoc.expenses.map((exp, idx) => (
+                    <div key={exp.id} className="flex items-center justify-between text-xs p-2.5 bg-white rounded-xl border border-slate-200 gap-2">
+                      <div className="truncate flex-1">
+                        <span className="font-bold text-slate-900 block">{exp.item}</span>
+                        <span className="text-[10px] text-slate-500">{exp.notes || 'Tanpa catatan'}</span>
+                      </div>
+                      <span className="font-mono font-bold text-slate-800 shrink-0">{formatCurrency(exp.amount)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveExpenseItem(exp.id)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Subform to add an expense item */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200">
+                  <input
+                    type="text"
+                    value={tempExpenseItem.item}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, item: e.target.value })}
+                    placeholder="Nama item / kebutuhan..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 outline-hidden"
+                  />
+                  <input
+                    type="number"
+                    value={tempExpenseItem.amount || ''}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, amount: Number(e.target.value) })}
+                    placeholder="Nominal (Rp)..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 font-mono font-bold outline-hidden"
+                  />
+                  <input
+                    type="text"
+                    value={tempExpenseItem.notes}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, notes: e.target.value })}
+                    placeholder="Nomor nota / keterangan toko..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 outline-hidden"
+                  />
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="cursor-pointer px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-[11px]">
+                      <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+                      {tempExpenseItem.proofUrl ? '✓ Foto Nota Terlampir' : 'Unggah Foto Nota/Kwitansi'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUploadReceipt}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddExpenseItem}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tambah Item
+                  </button>
+                </div>
+              </div>
+
+              {/* Photo Documentation Input */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <ImageIcon className="w-4 h-4 text-emerald-600" />
+                  Dokumentasi Foto Lapangan ({newSoc.documentationUrls.length} Foto)
+                </span>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {newSoc.documentationUrls.map((url, idx) => (
+                    <div key={idx} className="relative h-20 rounded-xl overflow-hidden border border-slate-200 group bg-slate-200">
+                      <img src={url} alt="Dokumentasi" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDocUrl(idx)}
+                        className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full shadow-md hover:bg-red-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <label className="h-20 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-white flex flex-col items-center justify-center cursor-pointer text-slate-400 hover:text-indigo-600 transition-colors p-2 text-center">
+                    <Plus className="w-5 h-5 mb-0.5" />
+                    <span className="text-[10px] font-bold">Unggah Foto</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileUploadDoc}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="url"
+                    value={tempDocUrl}
+                    onChange={e => setTempDocUrl(e.target.value)}
+                    placeholder="Atau tempel URL gambar foto (http://...)"
+                    className="flex-1 text-xs p-2 bg-white rounded-lg border border-slate-300 outline-hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddDocUrl}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    Tambah URL
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Catatan Hasil & Evaluasi LPJ</label>
+                <textarea
+                  rows={2}
+                  value={newSoc.lpjNotes}
+                  onChange={e => setNewSoc({ ...newSoc, lpjNotes: e.target.value })}
+                  placeholder="Catatan evaluasi baksos, kesimpulan, atau ucapan terima kasih..."
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-xs cursor-pointer"
                 >
-                  Simpan Laporan Baksos
+                  Simpan Laporan Baksos & LPJ
                 </button>
               </div>
             </form>
