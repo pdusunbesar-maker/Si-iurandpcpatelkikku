@@ -73,7 +73,23 @@ interface AppContextType {
   importMembers: (newMembers: Omit<Member, 'id'>[]) => void;
 
   // Actions - Dues & Payments
-  updateDuesStatus: (memberId: string, year: number, month: number, status: 'paid' | 'pending' | 'unpaid' | 'inactive') => void;
+  updateDuesStatus: (memberId: string, year: number, month: number, status: 'paid' | 'pending' | 'unpaid' | 'inactive', amount?: number) => void;
+  bulkUpdateDues: (updates: { memberId: string; year: number; month: number; status: 'paid' | 'pending' | 'unpaid' | 'inactive'; amount?: number }[]) => void;
+  settleMemberArrears: (
+    memberId: string,
+    months: { year: number; month: number }[],
+    options: {
+      paymentMethod: string;
+      recordCash: boolean;
+      paidDate?: string;
+      notes?: string;
+    }
+  ) => Promise<{ submissionId?: string; totalAmount: number }>;
+  waiveMemberArrears: (
+    memberId: string,
+    months: { year: number; month: number }[],
+    reason?: string
+  ) => Promise<void>;
   submitPayment: (data: {
     memberId: string;
     months: { year: number; month: number }[];
@@ -625,20 +641,191 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     memberId: string,
     year: number,
     month: number,
-    status: 'paid' | 'pending' | 'unpaid' | 'inactive'
+    status: 'paid' | 'pending' | 'unpaid' | 'inactive',
+    amount?: number
   ) => {
-    setDuesRecords(prev =>
-      prev.map(d => {
+    const today = new Date().toISOString().split('T')[0];
+    setDuesRecords(prev => {
+      const next = prev.map(d => {
         if (d.memberId === memberId && d.year === year && d.month === month) {
           return {
             ...d,
             status,
-            updatedAt: new Date().toISOString().split('T')[0],
+            amount: amount !== undefined ? amount : d.amount,
+            updatedAt: today,
           };
         }
         return d;
-      })
-    );
+      });
+      localStorage.setItem('patelki_dues', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const bulkUpdateDues = (
+    updates: {
+      memberId: string;
+      year: number;
+      month: number;
+      status: 'paid' | 'pending' | 'unpaid' | 'inactive';
+      amount?: number;
+    }[]
+  ) => {
+    const today = new Date().toISOString().split('T')[0];
+    const updateMap = new Map<string, { status: 'paid' | 'pending' | 'unpaid' | 'inactive'; amount?: number }>();
+    updates.forEach(u => {
+      updateMap.set(`${u.memberId}-${u.year}-${u.month}`, { status: u.status, amount: u.amount });
+    });
+
+    setDuesRecords(prev => {
+      const next = prev.map(d => {
+        const key = `${d.memberId}-${d.year}-${d.month}`;
+        const match = updateMap.get(key);
+        if (match) {
+          return {
+            ...d,
+            status: match.status,
+            amount: match.amount !== undefined ? match.amount : d.amount,
+            updatedAt: today,
+          };
+        }
+        return d;
+      });
+      localStorage.setItem('patelki_dues', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Pelunasan Tunggakan Iuran Langsung oleh Bendahara (Tunai/Transfer Langsung)
+  const settleMemberArrears = async (
+    memberId: string,
+    months: { year: number; month: number }[],
+    options: {
+      paymentMethod: string;
+      recordCash: boolean;
+      paidDate?: string;
+      notes?: string;
+    }
+  ): Promise<{ submissionId?: string; totalAmount: number }> => {
+    const member = members.find(m => m.id === memberId);
+    if (!member || months.length === 0) return { totalAmount: 0 };
+
+    const totalAmount = months.reduce((sum, m) => {
+      const rec = duesRecords.find(d => d.memberId === memberId && d.year === m.year && d.month === m.month);
+      return sum + (rec?.amount || settings.monthlyFee);
+    }, 0);
+
+    const nowStr = new Date().toLocaleString('id-ID');
+    const nowIsoDate = options.paidDate || new Date().toISOString().split('T')[0];
+    const subId = `sub-direct-${Date.now()}`;
+
+    // 1. Create verified payment submission record
+    const newSubmission: PaymentSubmission = {
+      id: subId,
+      memberId,
+      memberName: `${member.nama}, ${member.gelar || ''}`.trim(),
+      memberNap: member.nap,
+      memberWa: member.noWa,
+      memberInstansi: member.instansi,
+      months,
+      totalAmount,
+      bankAccountId: 'direct',
+      bankName: options.paymentMethod || 'Pelunasan Langsung (Bendahara)',
+      accountNumber: 'Pembayaran Langsung / Tunai',
+      proofUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600',
+      proofName: 'Pelunasan_Langsung_Bendahara.pdf',
+      status: 'approved',
+      submittedAt: nowStr,
+      verifiedAt: nowStr,
+      verifiedBy: settings.bendaharaName,
+      notes: options.notes || `Pelunasan langsung diterima oleh Bendahara via ${options.paymentMethod || 'Tunai'}`,
+    };
+
+    setPaymentSubmissions(prev => {
+      const next = [newSubmission, ...prev];
+      localStorage.setItem('patelki_submissions', JSON.stringify(next));
+      return next;
+    });
+
+    // 2. Mark dues records as paid
+    const targetSet = new Set(months.map(m => `${m.year}-${m.month}`));
+    setDuesRecords(prev => {
+      const next = prev.map(d => {
+        if (d.memberId === memberId && targetSet.has(`${d.year}-${d.month}`)) {
+          return {
+            ...d,
+            status: 'paid' as const,
+            paymentId: subId,
+            updatedAt: nowIsoDate,
+          };
+        }
+        return d;
+      });
+      localStorage.setItem('patelki_dues', JSON.stringify(next));
+      return next;
+    });
+
+    // 3. Automatically record to Cash Book if recordCash is true
+    if (options.recordCash) {
+      const monthDescriptions = months
+        .map(m => `${MONTH_NAMES[m.month - 1]} ${m.year}`)
+        .join(', ');
+
+      const newTx: CashTransaction = {
+        id: `trx-${Date.now()}`,
+        date: nowIsoDate,
+        type: 'income',
+        category: 'Iuran Wajib Anggota',
+        sourceOrRecipient: `${member.nama} (${member.nap})`,
+        amount: totalAmount,
+        description: `Pelunasan iuran ${monthDescriptions} (${options.paymentMethod || 'Tunai'})`,
+        relatedPaymentId: subId,
+        recordedBy: settings.bendaharaName,
+        createdAt: nowStr,
+      };
+
+      setTransactions(prev => {
+        const next = [newTx, ...prev];
+        localStorage.setItem('patelki_transactions', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    // 4. Send Notification to Member
+    addNotification({
+      recipientId: memberId,
+      title: 'Pelunasan Iuran Diterima! 🎉',
+      message: `Bendahara DPC telah mencatat pelunasan iuran Anda untuk ${months.length} bulan (${formatCurrency(totalAmount)}). Terima kasih!`,
+      type: 'success',
+      link: 'riwayat',
+    });
+
+    return { submissionId: subId, totalAmount };
+  };
+
+  // Pembebasan / Pemutihan Tunggakan (Misal Cuti, Pindahan, Bebas Iuran)
+  const waiveMemberArrears = async (
+    memberId: string,
+    months: { year: number; month: number }[],
+    reason?: string
+  ) => {
+    const today = new Date().toISOString().split('T')[0];
+    const targetSet = new Set(months.map(m => `${m.year}-${m.month}`));
+
+    setDuesRecords(prev => {
+      const next = prev.map(d => {
+        if (d.memberId === memberId && targetSet.has(`${d.year}-${d.month}`)) {
+          return {
+            ...d,
+            status: 'inactive' as const,
+            updatedAt: today,
+          };
+        }
+        return d;
+      });
+      localStorage.setItem('patelki_dues', JSON.stringify(next));
+      return next;
+    });
   };
 
   // Submit payment from member
@@ -1174,6 +1361,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleMemberStatus,
         importMembers,
         updateDuesStatus,
+        bulkUpdateDues,
+        settleMemberArrears,
+        waiveMemberArrears,
         submitPayment,
         approvePayment,
         rejectPayment,

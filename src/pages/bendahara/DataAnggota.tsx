@@ -22,9 +22,11 @@ import {
   Download,
   KeyRound,
   Lock,
+  Settings2,
 } from 'lucide-react';
 import { PatelkiLogo } from '../../components/PatelkiLogo';
 import { PhotoUploader } from '../../components/PhotoUploader';
+import { ManageArrearsModal } from '../../components/ManageArrearsModal';
 
 export const DataAnggota: React.FC = () => {
   const {
@@ -50,6 +52,7 @@ export const DataAnggota: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
+  const [arrearsModalMember, setArrearsModalMember] = useState<Member | null>(null);
   const [passwordModalMember, setPasswordModalMember] = useState<Member | null>(null);
   const [targetMemberPassword, setTargetMemberPassword] = useState('');
   const [passwordSavedToast, setPasswordSavedToast] = useState(false);
@@ -456,6 +459,15 @@ export const DataAnggota: React.FC = () => {
                       {/* Action Buttons */}
                       <td className="py-3.5 px-4 text-center no-print">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setArrearsModalMember(m)}
+                            className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Kelola / Atur Tunggakan Iuran Anggota"
+                          >
+                            <Settings2 className="w-4 h-4" />
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => setViewingMember(m)}
@@ -962,6 +974,15 @@ export const DataAnggota: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Manage Arrears Modal */}
+      {arrearsModalMember && (
+        <ManageArrearsModal
+          member={arrearsModalMember}
+          isOpen={true}
+          onClose={() => setArrearsModalMember(null)}
+        />
       )}
     </div>
   );

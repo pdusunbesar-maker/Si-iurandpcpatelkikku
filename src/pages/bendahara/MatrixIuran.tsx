@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { Member } from '../../types';
 import * as XLSX from 'xlsx';
 import {
   Grid3X3,
@@ -14,7 +15,9 @@ import {
   MinusCircle,
   ArrowRight,
   Info,
+  Settings2,
 } from 'lucide-react';
+import { ManageArrearsModal } from '../../components/ManageArrearsModal';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
@@ -25,6 +28,7 @@ export const MatrixIuran: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'semua' | 'lunas' | 'tunggakan' | 'pending'>('semua');
   const [instansiFilter, setInstansiFilter] = useState('semua');
+  const [selectedMemberForArrears, setSelectedMemberForArrears] = useState<Member | null>(null);
 
   // Quick edit popover state
   const [selectedCell, setSelectedCell] = useState<{
@@ -284,25 +288,41 @@ export const MatrixIuran: React.FC = () => {
                   <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                     {/* Sticky Member Name Column */}
                     <td className="py-3 px-4 text-left sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-slate-100 shadow-xs">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={
-                            m.foto ||
-                            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-                              m.nama
-                            )}`
-                          }
-                          alt={m.nama}
-                          className="w-7 h-7 rounded-lg object-cover border border-amber-300 shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-extrabold text-slate-900 text-xs truncate">
-                            {m.nama}, {m.gelar}
-                          </p>
-                          <p className="text-[10px] text-slate-500 font-mono truncate">
-                            {m.nap} • {m.instansi}
-                          </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={
+                              m.foto ||
+                              `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                                m.nama
+                              )}`
+                            }
+                            alt={m.nama}
+                            className="w-7 h-7 rounded-lg object-cover border border-amber-300 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMemberForArrears(m)}
+                              className="font-extrabold text-slate-900 text-xs truncate hover:text-amber-700 hover:underline text-left block cursor-pointer"
+                              title="Klik untuk kelola tunggakan & status iuran anggota ini"
+                            >
+                              {m.nama}, {m.gelar}
+                            </button>
+                            <p className="text-[10px] text-slate-500 font-mono truncate">
+                              {m.nap} • {m.instansi}
+                            </p>
+                          </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMemberForArrears(m)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-100 transition-colors shrink-0 cursor-pointer"
+                          title="Atur tunggakan & pelunasan iuran anggota"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
 
@@ -443,6 +463,16 @@ export const MatrixIuran: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Arrears & Multi-month Management Modal */}
+      {selectedMemberForArrears && (
+        <ManageArrearsModal
+          member={selectedMemberForArrears}
+          isOpen={true}
+          defaultYear={selectedYear}
+          onClose={() => setSelectedMemberForArrears(null)}
+        />
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { Member } from '../../types';
 import * as XLSX from 'xlsx';
 import {
   AlertCircle,
@@ -12,8 +13,13 @@ import {
   Calendar,
   Send,
   Users,
+  Sliders,
+  DollarSign,
+  ShieldCheck,
+  Settings2,
 } from 'lucide-react';
 import { WhatsAppModal } from '../../components/WhatsAppModal';
+import { ManageArrearsModal } from '../../components/ManageArrearsModal';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
@@ -22,6 +28,7 @@ export const DaftarTunggakan: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedMemberForArrears, setSelectedMemberForArrears] = useState<Member | null>(null);
   const [waModalData, setWaModalData] = useState<{
     name: string;
     phone: string;
@@ -229,7 +236,7 @@ export const DaftarTunggakan: React.FC = () => {
                 <th className="py-3.5 px-4">Bulan Menunggak</th>
                 <th className="py-3.5 px-4 text-center">Jml Bulan</th>
                 <th className="py-3.5 px-4 text-right">Total Tunggakan</th>
-                <th className="py-3.5 px-4 text-center no-print">Aksi Tagih</th>
+                <th className="py-3.5 px-4 text-center no-print">Aksi Bendahara</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -248,7 +255,13 @@ export const DaftarTunggakan: React.FC = () => {
                     </td>
 
                     <td className="py-3.5 px-4 font-extrabold text-slate-900 text-xs sm:text-sm">
-                      {item.member.nama}, {item.member.gelar}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedMemberForArrears(item.member)}
+                        className="text-left hover:text-amber-700 hover:underline cursor-pointer"
+                      >
+                        {item.member.nama}, {item.member.gelar || ''}
+                      </button>
                     </td>
 
                     <td className="py-3.5 px-4">
@@ -257,7 +270,7 @@ export const DaftarTunggakan: React.FC = () => {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className="inline-block px-2 py-1 rounded-lg bg-red-50 text-red-800 font-semibold text-[11px] border border-red-200">
+                      <span className="inline-block px-2.5 py-1 rounded-lg bg-red-50 text-red-800 font-bold text-[11px] border border-red-200">
                         {item.unpaidMonthsStr} {selectedYear}
                       </span>
                     </td>
@@ -271,14 +284,27 @@ export const DaftarTunggakan: React.FC = () => {
                     </td>
 
                     <td className="py-3.5 px-4 text-center no-print">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenWaModal(item)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        Tagih via WA
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMemberForArrears(item.member)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-xs transition-all cursor-pointer active:scale-95"
+                          title="Atur status bulan tunggakan, lunaskan tunai, atau bebaskan iuran"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                          Atur Tunggakan
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWaModal(item)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all cursor-pointer active:scale-95"
+                          title="Kirim pesan tagihan iuran resmi via WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          Tagih WA
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -287,6 +313,16 @@ export const DaftarTunggakan: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Arrears Management Modal */}
+      {selectedMemberForArrears && (
+        <ManageArrearsModal
+          member={selectedMemberForArrears}
+          isOpen={true}
+          defaultYear={selectedYear}
+          onClose={() => setSelectedMemberForArrears(null)}
+        />
+      )}
 
       {/* WhatsApp Modal */}
       {waModalData && (
