@@ -33,8 +33,9 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
   const { currentMember, duesRecords, paymentSubmissions, settings, formatCurrency } = useApp();
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentSubmission | null>(null);
 
-  const currentYear = 2026;
-  const currentMonth = 10; // Oktober 2026
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12 based on running calendar
 
   if (!currentMember) {
     return <div className="p-8 text-center text-slate-500">Anggota tidak ditemukan.</div>;

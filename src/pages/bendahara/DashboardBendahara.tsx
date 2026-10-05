@@ -47,13 +47,15 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
     formatCurrency,
   } = useApp();
 
-  const currentYear = 2026;
-  const currentMonth = 10; // Oktober 2026 based on metadata
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12 based on running calendar
+  const currentMonthName = MONTH_NAMES[now.getMonth()];
 
   const activeMembers = members.filter(m => m.status === 'aktif');
   const activeCount = activeMembers.length;
 
-  // Monthly stats for current month
+  // Monthly stats for current running month
   const currentMonthDues = duesRecords.filter(
     d => d.year === currentYear && d.month === currentMonth
   );
@@ -74,7 +76,8 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
   const totalSocial = getTotalSocialServices();
 
   const pendingSubmissions = paymentSubmissions.filter(s => s.status === 'pending');
-  const arrearsList = getYearlyArrearsList(currentYear);
+  // Arrears list accumulated from January 2025 up to running calendar month
+  const arrearsList = getYearlyArrearsList('all');
   const totalArrearsAll = arrearsList.reduce((sum, item) => sum + item.totalArrears, 0);
 
   // Monthly breakdown for visual charts

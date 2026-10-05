@@ -134,7 +134,7 @@ interface AppContextType {
     pendingMonthsCount: number;
     unpaidMonthsList: { year: number; month: number }[];
   };
-  getYearlyArrearsList: (targetYear?: number) => {
+  getYearlyArrearsList: (targetYear?: number | 'all') => {
     member: Member;
     unpaidMonths: { year: number; month: number }[];
     totalArrears: number;
@@ -1182,21 +1182,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return socialServices.reduce((sum, s) => sum + s.totalSpent, 0);
   };
 
-  // Member dues calculation (current month or full history)
-  const getMemberDuesSummary = (memberId: string, year?: number) => {
+  // Member dues calculation (from January 2025 up to current running calendar month/day)
+  const getMemberDuesSummary = (memberId: string, filterYear?: number) => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1; // 1-12
+
     const targetRecords = duesRecords.filter(d => {
       if (d.memberId !== memberId) return false;
-      if (year) return d.year === year;
-      // if no year specified, compute across active years up to current month (e.g. 2025 and 2026)
-      return d.year <= 2026;
+      if (filterYear) {
+        if (d.year !== filterYear) return false;
+        // If filtering for currentYear, only up to current running month
+        if (d.year === curYear) return d.month <= curMonth;
+        if (d.year > curYear) return false;
+        return true;
+      }
+      // Across all history: from awal Januari 2025 up to current running calendar month
+      return d.year >= 2025 && (d.year < curYear || (d.year === curYear && d.month <= curMonth));
     });
 
+    const allPaidRecords = duesRecords.filter(
+      d => d.memberId === memberId && d.status === 'paid' && (filterYear ? d.year === filterYear : true)
+    );
     const paidRecords = targetRecords.filter(d => d.status === 'paid');
     const pendingRecords = targetRecords.filter(d => d.status === 'pending');
     const unpaidRecords = targetRecords.filter(d => d.status === 'unpaid');
 
-    const totalPaid = paidRecords.reduce((sum, r) => sum + r.amount, 0);
-    const arrearsAmount = unpaidRecords.reduce((sum, r) => sum + r.amount, 0);
+    const totalPaid = allPaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
+    const arrearsAmount = unpaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
 
     return {
       totalPaid,
@@ -1208,18 +1221,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const getYearlyArrearsList = (targetYear: number = 2026) => {
+  const getYearlyArrearsList = (targetYear?: number | 'all') => {
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+
     return members
       .filter(m => m.status === 'aktif')
       .map(member => {
-        const memberDues = duesRecords.filter(
-          d => d.memberId === member.id && d.year === targetYear
-        );
+        const memberDues = duesRecords.filter(d => {
+          if (d.memberId !== member.id) return false;
+          if (targetYear && targetYear !== 'all') {
+            if (d.year !== targetYear) return false;
+            if (d.year === curYear) return d.month <= curMonth;
+            if (d.year > curYear) return false;
+            return true;
+          }
+          // Default / 'all': from awal Januari 2025 up to current running calendar month
+          return d.year >= 2025 && (d.year < curYear || (d.year === curYear && d.month <= curMonth));
+        });
+
         const unpaid = memberDues
           .filter(d => d.status === 'unpaid')
           .map(d => ({ year: d.year, month: d.month }));
+
         const paidCount = memberDues.filter(d => d.status === 'paid').length;
-        const totalArrears = unpaid.length * settings.monthlyFee;
+        const totalArrears = unpaid.reduce((sum, u) => {
+          const rec = duesRecords.find(d => d.memberId === member.id && d.year === u.year && d.month === u.month);
+          return sum + (rec?.amount || settings.monthlyFee);
+        }, 0);
 
         return {
           member,

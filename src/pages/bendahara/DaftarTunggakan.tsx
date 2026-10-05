@@ -21,13 +21,24 @@ import {
 import { WhatsAppModal } from '../../components/WhatsAppModal';
 import { ManageArrearsModal } from '../../components/ManageArrearsModal';
 
+const MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export const DaftarTunggakan: React.FC = () => {
   const { members, duesRecords, settings, formatCurrency } = useApp();
 
+  const now = new Date();
+  const currentCalendarYear = now.getFullYear();
+  const currentCalendarMonth = now.getMonth() + 1; // 1-12
+  const currentCalendarMonthName = MONTH_NAMES[now.getMonth()];
+  const currentCalendarDateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('all'); // 'all' (Jan 2025 - today) or '2025', '2026', etc.
   const [selectedMemberForArrears, setSelectedMemberForArrears] = useState<Member | null>(null);
   const [waModalData, setWaModalData] = useState<{
     name: string;
@@ -35,31 +46,48 @@ export const DaftarTunggakan: React.FC = () => {
     message: string;
   } | null>(null);
 
-  // Calculate arrears list for active members up to current period
+  // Calculate arrears list for active members up to current running calendar month/day
   const arrearsList = members
     .filter(m => m.status === 'aktif')
     .map(member => {
-      const targetRecords = duesRecords.filter(
-        d => d.memberId === member.id && d.year === selectedYear
-      );
+      const targetRecords = duesRecords.filter(d => {
+        if (d.memberId !== member.id) return false;
+        if (selectedPeriod !== 'all') {
+          const targetYr = Number(selectedPeriod);
+          if (d.year !== targetYr) return false;
+          if (d.year === currentCalendarYear) return d.month <= currentCalendarMonth;
+          if (d.year > currentCalendarYear) return false;
+          return true;
+        }
+        // 'all': from awal Januari 2025 up to current running calendar month
+        return d.year >= 2025 && (d.year < currentCalendarYear || (d.year === currentCalendarYear && d.month <= currentCalendarMonth));
+      });
 
       const unpaidRecords = targetRecords.filter(d => d.status === 'unpaid');
-      const unpaidMonths = unpaidRecords.map(u => ({
-        year: u.year,
-        month: u.month,
-        monthName: MONTH_SHORT[u.month - 1],
-      }));
-
-      const totalArrears = unpaidRecords.length * settings.monthlyFee;
+      const totalArrears = unpaidRecords.reduce((sum, r) => sum + (r.amount || settings.monthlyFee), 0);
       const paidCount = targetRecords.filter(d => d.status === 'paid').length;
 
-      // Group consecutive months into readable string e.g., "Apr–Jun" or "Jan, Mar, Mei"
-      const monthNamesStr = unpaidMonths.map(u => u.monthName).join(', ');
+      // Group unpaid months by year for clean readability e.g. "2025 (12 bln), Jan–Okt 2026 (10 bln)"
+      const yearsSet = Array.from(new Set(unpaidRecords.map(u => u.year))).sort((a, b) => a - b);
+      const yearSummaries = yearsSet.map(yr => {
+        const yrUnpaid = unpaidRecords.filter(u => u.year === yr).sort((a, b) => a.month - b.month);
+        if (yrUnpaid.length === 12) {
+          return `${yr} (12 Bln Penuh)`;
+        }
+        if (yrUnpaid.length > 1) {
+          const first = MONTH_SHORT[yrUnpaid[0].month - 1];
+          const last = MONTH_SHORT[yrUnpaid[yrUnpaid.length - 1].month - 1];
+          return `${first}–${last} ${yr} (${yrUnpaid.length} bln)`;
+        }
+        return `${MONTH_SHORT[yrUnpaid[0].month - 1]} ${yr}`;
+      });
+
+      const monthNamesStr = yearSummaries.join(', ') || 'Tidak ada';
 
       return {
         member,
         unpaidCount: unpaidRecords.length,
-        unpaidMonthsStr: monthNamesStr || 'Tidak ada',
+        unpaidMonthsStr: monthNamesStr,
         totalArrears,
         paidCount,
       };
@@ -80,16 +108,20 @@ export const DaftarTunggakan: React.FC = () => {
 
   const totalArrearsAll = arrearsList.reduce((sum, i) => sum + i.totalArrears, 0);
 
+  const activePeriodLabel = selectedPeriod === 'all'
+    ? `Januari 2025 s.d. ${currentCalendarMonthName} ${currentCalendarYear}`
+    : `Tahun ${selectedPeriod}`;
+
   const handleOpenWaModal = (item: any) => {
     const msg = settings.waTemplateReminder
-      .replace(/\[NAMA\]/g, `${item.member.nama}, ${item.member.gelar}`)
+      .replace(/\[NAMA\]/g, `${item.member.nama}, ${item.member.gelar || ''}`.trim())
       .replace(/\[NAP\]/g, item.member.nap)
-      .replace(/\[TANGGAL\]/g, new Date().toLocaleDateString('id-ID'))
+      .replace(/\[TANGGAL\]/g, currentCalendarDateStr)
       .replace(/\[NOMINAL\]/g, formatCurrency(item.totalArrears))
-      .replace(/\[PERIODE\]/g, `${item.unpaidMonthsStr} ${selectedYear}`);
+      .replace(/\[PERIODE\]/g, item.unpaidMonthsStr);
 
     setWaModalData({
-      name: `${item.member.nama}, ${item.member.gelar}`,
+      name: `${item.member.nama}, ${item.member.gelar || ''}`.trim(),
       phone: item.member.noWa,
       message: msg,
     });
@@ -98,19 +130,19 @@ export const DaftarTunggakan: React.FC = () => {
   const handleExportExcel = () => {
     const exportData = arrearsList.map((item, index) => ({
       No: index + 1,
-      'Nama Anggota': `${item.member.nama}, ${item.member.gelar}`,
+      'Nama Anggota': `${item.member.nama}, ${item.member.gelar || ''}`.trim(),
       NAP: item.member.nap,
       'No WhatsApp': item.member.noWa,
       Instansi: item.member.instansi,
-      'Bulan Tunggakan': item.unpaidMonthsStr,
-      'Jumlah Bulan': item.unpaidCount,
+      'Periode Tunggakan': item.unpaidMonthsStr,
+      'Jumlah Bulan Menunggak': item.unpaidCount,
       'Total Tunggakan (Rp)': item.totalArrears,
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Tunggakan_${selectedYear}`);
-    XLSX.writeFile(workbook, `Daftar_Tunggakan_Patelki_${selectedYear}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, `Tunggakan_${selectedPeriod}`);
+    XLSX.writeFile(workbook, `Daftar_Tunggakan_Patelki_${selectedPeriod}_${now.toISOString().split('T')[0]}.xlsx`);
   };
 
   return (
@@ -126,25 +158,31 @@ export const DaftarTunggakan: React.FC = () => {
               {arrearsList.length} Anggota Menunggak
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Daftar kewajiban iuran yang belum terselesaikan. Dilengkapi dengan tombol direct "📱 Tagih via WhatsApp".
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 flex flex-wrap items-center gap-1.5">
+            <span>Daftar kewajiban iuran yang belum terselesaikan.</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[11px]">
+              🗓️ Periode Aktif: {activePeriodLabel}
+            </span>
           </p>
         </div>
 
-        {/* Actions & Year */}
+        {/* Actions & Period Filter */}
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs">
             <Calendar className="w-4 h-4 text-amber-500 mr-2" />
             <select
-              value={selectedYear}
-              onChange={e => setSelectedYear(Number(e.target.value))}
+              value={selectedPeriod}
+              onChange={e => setSelectedPeriod(e.target.value)}
               className="text-xs font-bold text-slate-800 bg-transparent outline-hidden cursor-pointer"
             >
-              {[2025, 2026, 2027, 2028, 2029, 2030, 2031].map(y => (
-                <option key={y} value={y}>
-                  Tahun {y}
-                </option>
-              ))}
+              <option value="all">📊 Akumulasi (Jan 2025 – {currentCalendarMonthName} {currentCalendarYear})</option>
+              <option value="2025">Tahun 2025 (12 Bulan)</option>
+              <option value="2026">Tahun 2026 (Jan s.d. {currentCalendarMonthName})</option>
+              <option value="2027">Tahun 2027</option>
+              <option value="2028">Tahun 2028</option>
+              <option value="2029">Tahun 2029</option>
+              <option value="2030">Tahun 2030</option>
+              <option value="2031">Tahun 2031</option>
             </select>
           </div>
 
@@ -173,7 +211,7 @@ export const DaftarTunggakan: React.FC = () => {
         <div className="bg-red-500 text-white p-5 rounded-2xl shadow-lg shadow-red-500/15 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-red-100 uppercase tracking-wider">
-              Total Tunggakan Kas ({selectedYear})
+              Total Tunggakan ({selectedPeriod === 'all' ? `Jan 2025 – ${currentCalendarMonthName} ${currentCalendarYear}` : `Tahun ${selectedPeriod}`})
             </p>
             <p className="text-2xl font-black font-mono mt-1">
               {formatCurrency(totalArrearsAll)}
@@ -233,7 +271,7 @@ export const DaftarTunggakan: React.FC = () => {
                 <th className="py-3.5 px-4 w-12 text-center">No</th>
                 <th className="py-3.5 px-4">Nama Anggota</th>
                 <th className="py-3.5 px-4">NAP & Instansi</th>
-                <th className="py-3.5 px-4">Bulan Menunggak</th>
+                <th className="py-3.5 px-4">Periode Bulan Menunggak</th>
                 <th className="py-3.5 px-4 text-center">Jml Bulan</th>
                 <th className="py-3.5 px-4 text-right">Total Tunggakan</th>
                 <th className="py-3.5 px-4 text-center no-print">Aksi Bendahara</th>
@@ -244,7 +282,7 @@ export const DaftarTunggakan: React.FC = () => {
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                    Tidak ada data tunggakan untuk periode ini. Semua anggota tertib membayar!
+                    Tidak ada data tunggakan untuk periode {activePeriodLabel}. Semua anggota tertib membayar!
                   </td>
                 </tr>
               ) : (
@@ -271,7 +309,7 @@ export const DaftarTunggakan: React.FC = () => {
 
                     <td className="py-3.5 px-4">
                       <span className="inline-block px-2.5 py-1 rounded-lg bg-red-50 text-red-800 font-bold text-[11px] border border-red-200">
-                        {item.unpaidMonthsStr} {selectedYear}
+                        {item.unpaidMonthsStr}
                       </span>
                     </td>
 
@@ -319,7 +357,7 @@ export const DaftarTunggakan: React.FC = () => {
         <ManageArrearsModal
           member={selectedMemberForArrears}
           isOpen={true}
-          defaultYear={selectedYear}
+          defaultYear={selectedPeriod === 'all' ? currentCalendarYear : Number(selectedPeriod)}
           onClose={() => setSelectedMemberForArrears(null)}
         />
       )}

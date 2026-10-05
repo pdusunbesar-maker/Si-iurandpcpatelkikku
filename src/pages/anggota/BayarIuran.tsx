@@ -38,8 +38,9 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
     formatPhoneDisplay,
   } = useApp();
 
-  const currentYear = 2026;
-  const currentMonth = 10;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
 
   // Selected bank
   const [selectedBankId, setSelectedBankId] = useState<string>(

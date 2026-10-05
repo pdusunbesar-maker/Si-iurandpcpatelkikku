@@ -79,12 +79,18 @@ export const ManageArrearsModal: React.FC<ManageArrearsModalProps> = ({
 
   if (!isOpen) return null;
 
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+
   // Get member dues for all years and current selected year
   const memberAllDues = duesRecords.filter(d => d.memberId === member.id);
   const memberYearDues = memberAllDues.filter(d => d.year === selectedYear);
 
-  // Arrears calculations across all years
-  const allUnpaid = memberAllDues.filter(d => d.status === 'unpaid');
+  // Arrears calculations across active years from January 2025 up to running calendar month
+  const allUnpaid = memberAllDues.filter(
+    d => d.status === 'unpaid' && d.year >= 2025 && (d.year < curYear || (d.year === curYear && d.month <= curMonth))
+  );
   const totalArrearsAllYears = allUnpaid.reduce((sum, d) => sum + (d.amount || settings.monthlyFee), 0);
 
   // Toggle selection of a specific month
