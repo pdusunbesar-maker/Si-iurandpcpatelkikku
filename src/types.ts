@@ -132,6 +132,7 @@ export interface AppSettings {
   organizationName: string;
   branchName: string;
   monthlyFee: number;
+  initialBalance?: number; // Saldo Awal Kas Organisasi (Editable)
   startYear: number;
   endYear: number;
   address: string;

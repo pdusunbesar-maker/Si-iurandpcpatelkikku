@@ -1112,7 +1112,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newId,
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setSocialServices(prev => [newSoc, ...prev]);
+    const nextSocialServices = [newSoc, ...socialServices];
+    setSocialServices(nextSocialServices);
+    localStorage.setItem('patelki_social', JSON.stringify(nextSocialServices));
 
     // Automatically add corresponding expense transaction to Cashbook with relatedSocialId
     if (soc.totalSpent > 0) {
@@ -1132,39 +1134,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateSocialService = (id: string, socData: Partial<SocialService>) => {
     let updatedSoc: SocialService | null = null;
 
-    setSocialServices(prev =>
-      prev.map(s => {
-        if (s.id === id) {
-          const updated = { ...s, ...socData };
-          if (updated.expenses && updated.expenses.length > 0) {
-            updated.totalSpent = updated.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-          }
-          updatedSoc = updated;
-          return updated;
+    const nextSocialServices = socialServices.map(s => {
+      if (s.id === id) {
+        const updated = { ...s, ...socData };
+        if (updated.expenses && updated.expenses.length > 0) {
+          updated.totalSpent = updated.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
         }
-        return s;
-      })
-    );
+        updatedSoc = updated;
+        return updated;
+      }
+      return s;
+    });
+
+    setSocialServices(nextSocialServices);
+    localStorage.setItem('patelki_social', JSON.stringify(nextSocialServices));
 
     // Sync corresponding cashbook transaction
     if (updatedSoc) {
       const current = updatedSoc as SocialService;
-      setTransactions(prev =>
-        prev.map(t => {
-          if (t.relatedSocialId === id || (t.category === 'Bakti Sosial & Pengabdian' && t.sourceOrRecipient === current.title)) {
-            return {
-              ...t,
-              date: current.date,
-              amount: current.totalSpent,
-              sourceOrRecipient: current.title,
-              description: `Pengeluaran Kegiatan Bakti Sosial di ${current.location}`,
-              proofUrl: current.documentationUrls[0] || t.proofUrl,
-              relatedSocialId: id,
-            };
-          }
-          return t;
-        })
-      );
+      const nextTransactions = transactions.map(t => {
+        if (t.relatedSocialId === id || (t.category.toLowerCase().includes('bakti') && t.sourceOrRecipient === current.title)) {
+          return {
+            ...t,
+            date: current.date,
+            amount: current.totalSpent,
+            sourceOrRecipient: current.title,
+            description: `Pengeluaran Kegiatan Bakti Sosial di ${current.location}`,
+            proofUrl: current.documentationUrls[0] || t.proofUrl,
+            relatedSocialId: id,
+          };
+        }
+        return t;
+      });
+      setTransactions(nextTransactions);
+      localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
     }
 
     if (isSupabaseActive) {
@@ -1172,25 +1175,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deleteSocialService = (id: string) => {
+  const deleteSocialService = async (id: string) => {
     const targetSoc = socialServices.find(s => s.id === id);
 
-    // 1. Remove from Social Services state
-    setSocialServices(prev => prev.filter(s => s.id !== id));
+    // 1. Compute new filtered arrays explicitly to avoid React closure stale state
+    const nextSocialServices = socialServices.filter(s => s.id !== id);
 
-    // 2. Automatically remove linked expense transactions from Cashbook (Buku Kas Keluar)
-    setTransactions(prev =>
-      prev.filter(t => {
-        if (t.relatedSocialId === id) return false;
-        if (targetSoc && t.category === 'Bakti Sosial & Pengabdian' && t.sourceOrRecipient === targetSoc.title) return false;
-        return true;
+    const linkedTxIds = transactions
+      .filter(t => {
+        if (t.relatedSocialId === id) return true;
+        if (targetSoc && t.category.toLowerCase().includes('bakti') && (t.sourceOrRecipient === targetSoc.title || t.description.includes(targetSoc.title))) return true;
+        return false;
       })
-    );
+      .map(t => t.id);
 
-    // 3. Delete from Supabase database tables
-    deleteFromSupabase('social_services', 'id', id).catch(console.error);
+    const nextTransactions = transactions.filter(t => !linkedTxIds.includes(t.id));
+
+    // 2. Update React State & LocalStorage immediately
+    setSocialServices(nextSocialServices);
+    setTransactions(nextTransactions);
+
+    localStorage.setItem('patelki_social', JSON.stringify(nextSocialServices));
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
+    // 3. Delete explicitly from Supabase database tables
+    deleteFromSupabase('social_services', 'id', id).catch(console.warn);
+
+    for (const txId of linkedTxIds) {
+      deleteFromSupabase('cash_transactions', 'id', txId).catch(console.warn);
+    }
+
+    if (targetSoc) {
+      deleteFromSupabase('cash_transactions', 'source_or_recipient', targetSoc.title).catch(console.warn);
+    }
+
+    // 4. Sync the EXACT NEW FILTERED DATA to Supabase so it never re-appears!
     if (isSupabaseActive) {
-      syncUploadToSupabase().catch(console.error);
+      await pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions: nextTransactions,
+        donations,
+        socialServices: nextSocialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
     }
   };
 

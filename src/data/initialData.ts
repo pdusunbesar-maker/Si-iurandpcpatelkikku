@@ -46,6 +46,7 @@ export const INITIAL_SETTINGS: AppSettings = {
   organizationName: 'Persatuan Ahli Teknologi Laboratorium Medik Indonesia',
   branchName: 'DPC PATELKI Kabupaten Kayong Utara',
   monthlyFee: 30000,
+  initialBalance: 8500000,
   startYear: 2025,
   endYear: 2031,
   address: 'Sekretariat DPC Patelki KKU, Jl. Bhayangkara No. 04, Sukadana, Kab. Kayong Utara, Kalimantan Barat 78852',
