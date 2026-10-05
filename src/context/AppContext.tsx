@@ -928,36 +928,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    // If Bendahara name or NAP is updated, sync immediately with treasurer member and currentMember
-    if (newSettings.bendaharaName || newSettings.bendaharaNap) {
-      const newName = newSettings.bendaharaName;
-      const newNap = newSettings.bendaharaNap;
-
-      setMembers(prevMembers =>
-        prevMembers.map(m => {
-          if (m.id === 'mem-1' || m.jabatan?.toLowerCase().includes('bendahara') || (currentMember && m.id === currentMember.id)) {
-            return {
-              ...m,
-              nama: newName || m.nama,
-              nap: newNap || m.nap,
-            };
-          }
-          return m;
-        })
-      );
-
-      if (currentUserRole === 'bendahara') {
-        setCurrentMember(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            nama: newName || prev.nama,
-            nap: newNap || prev.nap,
-          };
-        });
-      }
-    }
-
     // Auto-sync settings to Supabase if configured
     if (isSupabaseActive) {
       syncUploadToSupabase().catch(console.error);

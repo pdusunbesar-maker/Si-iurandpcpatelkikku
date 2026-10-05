@@ -400,7 +400,7 @@ export async function pushAllDataToSupabase(data: {
       password: m.password || '123456',
       pin: m.pin || null,
     }));
-    await upsertInChunks(client, 'members', membersPayload, 'nap', 50);
+    await upsertInChunks(client, 'members', membersPayload, 'id', 50);
 
     // Retrieve active members from Supabase to resolve foreign key ID mappings
     const { data: dbMembers } = await client.from('members').select('id, nap');
