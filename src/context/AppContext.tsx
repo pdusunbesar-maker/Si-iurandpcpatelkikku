@@ -1189,7 +1189,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 3. Delete from Supabase database tables
     deleteFromSupabase('social_services', 'id', id).catch(console.error);
-    deleteFromSupabase('cash_transactions', 'related_social_id', id).catch(console.error);
+    if (isSupabaseActive) {
+      syncUploadToSupabase().catch(console.error);
+    }
   };
 
   // Bank Accounts
