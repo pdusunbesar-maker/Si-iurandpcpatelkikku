@@ -25,14 +25,24 @@ import {
   Info,
   ExternalLink,
   Award,
-  Sparkles,
+  Edit3,
+  Upload,
+  Check,
 } from 'lucide-react';
 
 export const BaktiSosial: React.FC = () => {
-  const { socialServices, addSocialService, deleteSocialService, settings, formatCurrency } = useApp();
+  const {
+    socialServices,
+    addSocialService,
+    updateSocialService,
+    deleteSocialService,
+    settings,
+    formatCurrency,
+  } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingSoc, setEditingSoc] = useState<SocialService | null>(null);
   const [viewingLPJ, setViewingLPJ] = useState<SocialService | null>(null);
   const [viewingProofImage, setViewingProofImage] = useState<string | null>(null);
 
@@ -44,7 +54,6 @@ export const BaktiSosial: React.FC = () => {
     picName: string;
     fundSource: string;
     totalBudget: number;
-    totalSpent: number;
     beneficiaries: string;
     description: string;
     lpjNotes: string;
@@ -57,8 +66,7 @@ export const BaktiSosial: React.FC = () => {
     picName: settings.ketuaName || 'Panitia Baksos DPC PATELKI KKU',
     fundSource: 'Kas DPC PATELKI KKU & Donasi Mitra',
     totalBudget: 3500000,
-    totalSpent: 3500000,
-    beneficiaries: '150 Warga Masyarkat & Lansia',
+    beneficiaries: '150 Warga Masyarakat & Lansia',
     description: 'Pemeriksaan Kesehatan & Skrining Laboratorium Medis (Gula Darah, Kolesterol, Asam Urat) Gratis serta Edukasi Kesehatan ATLM.',
     lpjNotes: 'Kegiatan berjalan lancar, tertib, dan mendapatkan apresiasi tinggi dari perangkat desa dan warga setempat.',
     documentationUrls: [
@@ -76,7 +84,14 @@ export const BaktiSosial: React.FC = () => {
   const [tempExpenseItem, setTempExpenseItem] = useState({ item: '', amount: 0, notes: '', proofUrl: '' });
   const [tempDocUrl, setTempDocUrl] = useState('');
 
-  const totalSpentAll = socialServices.reduce((sum, s) => sum + s.totalSpent, 0);
+  const totalSpentAll = socialServices.reduce((sum, s) => {
+    // Math safety: sum of expenses or fallback to totalSpent
+    const expSum = s.expenses && s.expenses.length > 0
+      ? s.expenses.reduce((sub, item) => sub + Number(item.amount || 0), 0)
+      : s.totalSpent;
+    return sum + expSum;
+  }, 0);
+
   const totalBeneficiariesApprox = socialServices.length * 150;
 
   const filteredList = socialServices.filter(s => {
@@ -89,90 +104,116 @@ export const BaktiSosial: React.FC = () => {
     );
   });
 
-  const handleAddExpenseItem = () => {
+  // Helper: Get real sum of expenses for a social service
+  const getCalculatedSpent = (soc: SocialService | typeof newSoc) => {
+    if (!soc.expenses || soc.expenses.length === 0) return (soc as SocialService).totalSpent || 0;
+    return soc.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  };
+
+  const handleAddExpenseItem = (targetState: 'new' | 'edit') => {
     if (!tempExpenseItem.item || tempExpenseItem.amount <= 0) {
       alert('Nama item dan nominal pengeluaran wajib diisi!');
       return;
     }
-    const newExpList = [
-      ...newSoc.expenses,
-      {
-        id: `exp-${Date.now()}`,
-        item: tempExpenseItem.item,
-        amount: Number(tempExpenseItem.amount),
-        notes: tempExpenseItem.notes,
-        proofUrl: tempExpenseItem.proofUrl,
-      },
-    ];
 
-    const newTotalSpent = newExpList.reduce((sum, i) => sum + i.amount, 0);
+    const newItem: SocialServiceExpense = {
+      id: `exp-${Date.now()}`,
+      item: tempExpenseItem.item,
+      amount: Number(tempExpenseItem.amount),
+      notes: tempExpenseItem.notes,
+      proofUrl: tempExpenseItem.proofUrl,
+    };
 
-    setNewSoc(prev => ({
-      ...prev,
-      expenses: newExpList,
-      totalSpent: newTotalSpent,
-      totalBudget: prev.totalBudget < newTotalSpent ? newTotalSpent : prev.totalBudget,
-    }));
+    if (targetState === 'new') {
+      setNewSoc(prev => ({
+        ...prev,
+        expenses: [...prev.expenses, newItem],
+      }));
+    } else if (editingSoc) {
+      const updatedExpenses = [...(editingSoc.expenses || []), newItem];
+      const updatedSpent = updatedExpenses.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+      setEditingSoc({
+        ...editingSoc,
+        expenses: updatedExpenses,
+        totalSpent: updatedSpent,
+      });
+    }
 
     setTempExpenseItem({ item: '', amount: 0, notes: '', proofUrl: '' });
   };
 
-  const handleRemoveExpenseItem = (id: string) => {
-    const newExpList = newSoc.expenses.filter(e => e.id !== id);
-    const newTotalSpent = newExpList.reduce((sum, i) => sum + i.amount, 0);
-
-    setNewSoc(prev => ({
-      ...prev,
-      expenses: newExpList,
-      totalSpent: newTotalSpent,
-    }));
+  const handleRemoveExpenseItem = (id: string, targetState: 'new' | 'edit') => {
+    if (targetState === 'new') {
+      setNewSoc(prev => ({
+        ...prev,
+        expenses: prev.expenses.filter(e => e.id !== id),
+      }));
+    } else if (editingSoc) {
+      const updatedExpenses = (editingSoc.expenses || []).filter(e => e.id !== id);
+      const updatedSpent = updatedExpenses.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+      setEditingSoc({
+        ...editingSoc,
+        expenses: updatedExpenses,
+        totalSpent: updatedSpent,
+      });
+    }
   };
 
-  const handleAddDocUrl = () => {
-    if (!tempDocUrl.trim()) return;
-    setNewSoc(prev => ({
-      ...prev,
-      documentationUrls: [...prev.documentationUrls, tempDocUrl.trim()],
-    }));
-    setTempDocUrl('');
+  const handleFileUploadReceipt = (e: React.ChangeEvent<HTMLInputElement>, targetExpenseId?: string, isEditModal: boolean = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const resultStr = reader.result as string;
+      if (!resultStr) return;
+
+      if (targetExpenseId && viewingLPJ) {
+        // Direct receipt attachment from LPJ view
+        const updatedExpenses = (viewingLPJ.expenses || []).map(exp =>
+          exp.id === targetExpenseId ? { ...exp, proofUrl: resultStr } : exp
+        );
+        const updatedSoc = { ...viewingLPJ, expenses: updatedExpenses };
+        updateSocialService(viewingLPJ.id, updatedSoc);
+        setViewingLPJ(updatedSoc);
+      } else if (targetExpenseId && editingSoc) {
+        // Receipt attachment inside Edit Modal for specific item
+        const updatedExpenses = (editingSoc.expenses || []).map(exp =>
+          exp.id === targetExpenseId ? { ...exp, proofUrl: resultStr } : exp
+        );
+        setEditingSoc({ ...editingSoc, expenses: updatedExpenses });
+      } else {
+        // Temp receipt for newly forming item
+        setTempExpenseItem(prev => ({ ...prev, proofUrl: resultStr }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleRemoveDocUrl = (index: number) => {
-    setNewSoc(prev => ({
-      ...prev,
-      documentationUrls: prev.documentationUrls.filter((_, i) => i !== index),
-    }));
-  };
-
-  const handleFileUploadDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUploadDoc = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean = false) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (reader.result) {
+        const resultStr = reader.result as string;
+        if (!resultStr) return;
+
+        if (isEdit && editingSoc) {
+          setEditingSoc(prev => prev ? {
+            ...prev,
+            documentationUrls: [...(prev.documentationUrls || []), resultStr],
+          } : null);
+        } else {
           setNewSoc(prev => ({
             ...prev,
-            documentationUrls: [...prev.documentationUrls, reader.result as string],
+            documentationUrls: [...prev.documentationUrls, resultStr],
           }));
         }
       };
       reader.readAsDataURL(file);
     });
-  };
-
-  const handleFileUploadReceipt = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (reader.result) {
-        setTempExpenseItem(prev => ({ ...prev, proofUrl: reader.result as string }));
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleCreateSocial = (e: React.FormEvent) => {
@@ -182,7 +223,7 @@ export const BaktiSosial: React.FC = () => {
       return;
     }
 
-    const calculatedSpent = newSoc.expenses.reduce((sum, item) => sum + item.amount, 0);
+    const calculatedSpent = newSoc.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
 
     addSocialService({
       title: newSoc.title,
@@ -191,7 +232,7 @@ export const BaktiSosial: React.FC = () => {
       picName: newSoc.picName,
       fundSource: newSoc.fundSource,
       totalBudget: Number(newSoc.totalBudget),
-      totalSpent: calculatedSpent || Number(newSoc.totalSpent),
+      totalSpent: calculatedSpent,
       beneficiaries: newSoc.beneficiaries,
       description: newSoc.description,
       lpjNotes: newSoc.lpjNotes,
@@ -202,22 +243,47 @@ export const BaktiSosial: React.FC = () => {
     setShowAddModal(false);
   };
 
+  const handleSaveEditSocial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSoc) return;
+
+    const calculatedSpent = (editingSoc.expenses || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+    updateSocialService(editingSoc.id, {
+      ...editingSoc,
+      totalSpent: calculatedSpent,
+    });
+
+    if (viewingLPJ && viewingLPJ.id === editingSoc.id) {
+      setViewingLPJ({
+        ...editingSoc,
+        totalSpent: calculatedSpent,
+      });
+    }
+
+    setEditingSoc(null);
+  };
+
   const handleExportExcel = () => {
-    const exportData = socialServices.map((s, idx) => ({
-      No: idx + 1,
-      'Nama Kegiatan Baksos': s.title,
-      Tanggal: s.date,
-      Lokasi: s.location,
-      'Penanggung Jawab (PIC)': s.picName || '-',
-      'Sumber Dana': s.fundSource,
-      'Total Anggaran (Rp)': s.totalBudget,
-      'Total Realisasi (Rp)': s.totalSpent,
-      'Penerima Manfaat': s.beneficiaries,
-      'Deskripsi / Hasil': s.description,
-      'Catatan LPJ': s.lpjNotes || '-',
-      'Jumlah Item Pengeluaran': s.expenses.length,
-      'Jumlah Dokumentasi Foto': s.documentationUrls.length,
-    }));
+    const exportData = socialServices.map((s, idx) => {
+      const realSpent = getCalculatedSpent(s);
+      return {
+        No: idx + 1,
+        'Nama Kegiatan Baksos': s.title,
+        Tanggal: s.date,
+        Lokasi: s.location,
+        'Penanggung Jawab (PIC)': s.picName || '-',
+        'Sumber Dana': s.fundSource,
+        'Total Pagu Anggaran (Rp)': s.totalBudget,
+        'Total Realisasi Pengeluaran (Rp)': realSpent,
+        'Selisih Varian (Rp)': s.totalBudget - realSpent,
+        'Penerima Manfaat': s.beneficiaries,
+        'Deskripsi / Hasil': s.description,
+        'Catatan LPJ': s.lpjNotes || '-',
+        'Jumlah Item Pengeluaran': s.expenses?.length || 0,
+        'Jumlah Dokumentasi Foto': s.documentationUrls?.length || 0,
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -239,7 +305,7 @@ export const BaktiSosial: React.FC = () => {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Pencatatan resmi, rincian anggaran, bukti nota transaksi, dokumentasi lapangan, dan Laporan Pertanggungjawaban (LPJ).
+            Pencatatan resmi, rincian nota pengeluaran, bukti SPJ/kwitansi, foto dokumentasi, dan Laporan Pertanggungjawaban (LPJ).
           </p>
         </div>
 
@@ -337,108 +403,123 @@ export const BaktiSosial: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredList.map(soc => (
-            <div
-              key={soc.id}
-              className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:border-indigo-400 transition-all duration-200"
-            >
-              <div>
-                {/* Photo Banner if available */}
-                {soc.documentationUrls && soc.documentationUrls.length > 0 ? (
-                  <div className="h-48 w-full relative overflow-hidden bg-slate-100 group">
-                    <img
-                      src={soc.documentationUrls[0]}
-                      alt={soc.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md">
-                      <Calendar className="w-3.5 h-3.5 text-amber-400" /> {soc.date}
-                    </div>
+          filteredList.map(soc => {
+            const calculatedSpent = getCalculatedSpent(soc);
 
-                    <div className="absolute bottom-3 left-3 bg-indigo-950/80 text-indigo-200 text-[11px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs flex items-center gap-1">
-                      <ImageIcon className="w-3.5 h-3.5 text-indigo-400" /> {soc.documentationUrls.length} Foto Dokumentasi
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-28 w-full bg-gradient-to-r from-indigo-900 to-slate-900 p-5 flex items-center justify-between text-white">
-                    <div>
-                      <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Bakti Sosial & Pengabdian</span>
-                      <span className="text-xs font-bold text-slate-200 mt-1 block">📅 {soc.date}</span>
-                    </div>
-                    <HeartHandshake className="w-8 h-8 text-indigo-300 opacity-80" />
-                  </div>
-                )}
+            return (
+              <div
+                key={soc.id}
+                className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden flex flex-col justify-between hover:border-indigo-400 transition-all duration-200"
+              >
+                <div>
+                  {/* Photo Banner if available */}
+                  {soc.documentationUrls && soc.documentationUrls.length > 0 ? (
+                    <div className="h-48 w-full relative overflow-hidden bg-slate-100 group">
+                      <img
+                        src={soc.documentationUrls[0]}
+                        alt={soc.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute top-3 right-3 bg-slate-900/80 text-white text-[11px] font-bold px-3 py-1 rounded-full backdrop-blur-xs flex items-center gap-1 shadow-md">
+                        <Calendar className="w-3.5 h-3.5 text-amber-400" /> {soc.date}
+                      </div>
 
-                <div className="p-5 sm:p-6 space-y-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-extrabold text-slate-900 text-base leading-snug">
-                      {soc.title}
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                      <MapPin className="w-4 h-4 text-red-500 shrink-0" />
-                      <span className="truncate font-semibold text-slate-800">{soc.location}</span>
+                      <div className="absolute bottom-3 left-3 bg-indigo-950/80 text-indigo-200 text-[11px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-xs flex items-center gap-1">
+                        <ImageIcon className="w-3.5 h-3.5 text-indigo-400" /> {soc.documentationUrls.length} Foto Dokumentasi
+                      </div>
                     </div>
-
-                    <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
-                      <Users className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="truncate font-semibold text-slate-800">{soc.beneficiaries}</span>
-                    </div>
-                  </div>
-
-                  {soc.picName && (
-                    <div className="flex items-center gap-2 text-xs text-slate-600">
-                      <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
-                      <span>Penanggung Jawab: <strong className="text-slate-900">{soc.picName}</strong></span>
+                  ) : (
+                    <div className="h-28 w-full bg-gradient-to-r from-indigo-900 to-slate-900 p-5 flex items-center justify-between text-white">
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">Bakti Sosial & Pengabdian</span>
+                        <span className="text-xs font-bold text-slate-200 mt-1 block">📅 {soc.date}</span>
+                      </div>
+                      <HeartHandshake className="w-8 h-8 text-indigo-300 opacity-80" />
                     </div>
                   )}
 
-                  <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
-                    {soc.description}
-                  </p>
-
-                  {/* Financial Breakdown Pill */}
-                  <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                    <div className="flex justify-between font-bold text-slate-700">
-                      <span>Sumber Dana:</span>
-                      <span className="text-indigo-800 font-extrabold">{soc.fundSource}</span>
+                  <div className="p-5 sm:p-6 space-y-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-extrabold text-slate-900 text-base leading-snug">
+                        {soc.title}
+                      </h3>
                     </div>
-                    <div className="flex justify-between items-center font-bold text-slate-900 pt-1 border-t border-slate-200/80">
-                      <span>Realisasi Pengeluaran ({soc.expenses?.length || 0} Item):</span>
-                      <span className="font-mono text-sm text-emerald-700 font-black">{formatCurrency(soc.totalSpent)}</span>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                      <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        <MapPin className="w-4 h-4 text-red-500 shrink-0" />
+                        <span className="truncate font-semibold text-slate-800">{soc.location}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-100">
+                        <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="truncate font-semibold text-slate-800">{soc.beneficiaries}</span>
+                      </div>
+                    </div>
+
+                    {soc.picName && (
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <UserCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Penanggung Jawab: <strong className="text-slate-900">{soc.picName}</strong></span>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                      {soc.description}
+                    </p>
+
+                    {/* Financial Breakdown Pill */}
+                    <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+                      <div className="flex justify-between font-bold text-slate-700">
+                        <span>Sumber Dana:</span>
+                        <span className="text-indigo-800 font-extrabold">{soc.fundSource}</span>
+                      </div>
+                      <div className="flex justify-between items-center font-bold text-slate-900 pt-1 border-t border-slate-200/80">
+                        <span>Realisasi SPJ ({soc.expenses?.length || 0} Item):</span>
+                        <span className="font-mono text-sm text-emerald-700 font-black">{formatCurrency(calculatedSpent)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Action Bar */}
-              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setViewingLPJ(soc)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  Buka LPJ & Bukti Nota Resmi →
-                </button>
+                {/* Action Bar */}
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setViewingLPJ(soc)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    Buka LPJ & Bukti Nota SPJ →
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm(`Hapus kegiatan baksos "${soc.title}"?`)) {
-                      deleteSocialService(soc.id);
-                    }
-                  }}
-                  className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition-colors cursor-pointer"
-                  title="Hapus Data Baksos"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingSoc(soc)}
+                      className="p-2 text-slate-500 hover:text-indigo-600 rounded-xl hover:bg-indigo-50 transition-colors cursor-pointer"
+                      title="Edit Data Baksos & Rincian SPJ"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Hapus kegiatan baksos "${soc.title}"?`)) {
+                          deleteSocialService(soc.id);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition-colors cursor-pointer"
+                      title="Hapus Data Baksos"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -456,12 +537,21 @@ export const BaktiSosial: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setEditingSoc(viewingLPJ)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Data SPJ
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => window.print()}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   Cetak LPJ PDF
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setViewingLPJ(null)}
@@ -543,10 +633,10 @@ export const BaktiSosial: React.FC = () => {
               <div className="space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <h5 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-                    II. Rincian Pengeluaran Dana & Bukti Nota Transaksi
+                    II. Rincian Pengeluaran SPJ & Bukti Nota Transaksi
                   </h5>
                   <span className="text-[11px] font-bold text-slate-500">
-                    Total: {viewingLPJ.expenses?.length || 0} Item
+                    Total: {viewingLPJ.expenses?.length || 0} Item SPJ
                   </span>
                 </div>
 
@@ -555,9 +645,9 @@ export const BaktiSosial: React.FC = () => {
                     <thead className="bg-slate-900 text-white font-bold text-[11px] uppercase tracking-wider">
                       <tr>
                         <th className="p-2.5 w-10 text-center">No</th>
-                        <th className="p-2.5">Item Rincian Kebutuhan</th>
-                        <th className="p-2.5">Keterangan / Nota</th>
-                        <th className="p-2.5 text-center no-print">Bukti Nota</th>
+                        <th className="p-2.5">Item Rincian Kebutuhan SPJ</th>
+                        <th className="p-2.5">Catatan / Toko Nota</th>
+                        <th className="p-2.5 text-center no-print">Bukti Nota SPJ</th>
                         <th className="p-2.5 text-right">Nominal (Rp)</th>
                       </tr>
                     </thead>
@@ -579,12 +669,20 @@ export const BaktiSosial: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => setViewingProofImage(exp.proofUrl || null)}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[10px]"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[10px] cursor-pointer"
                                 >
-                                  <Receipt className="w-3 h-3 text-indigo-600" /> Lihat Nota
+                                  <Receipt className="w-3.5 h-3.5 text-indigo-600" /> Lihat Nota SPJ
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-slate-400 italic">Tanpa Foto Nota</span>
+                                <label className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 font-bold text-[10px] cursor-pointer">
+                                  <Upload className="w-3 h-3 text-amber-600" /> Unggah Nota
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => handleFileUploadReceipt(e, exp.id, false)}
+                                    className="hidden"
+                                  />
+                                </label>
                               )}
                             </td>
                             <td className="p-2.5 text-right font-mono font-bold text-slate-900">
@@ -596,9 +694,9 @@ export const BaktiSosial: React.FC = () => {
                     </tbody>
                     <tfoot className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
                       <tr>
-                        <td colSpan={3} className="p-2.5 text-right font-extrabold uppercase">Total Realisasi Pengeluaran:</td>
+                        <td colSpan={3} className="p-2.5 text-right font-extrabold uppercase">Total Realisasi SPJ:</td>
                         <td colSpan={2} className="p-2.5 text-right font-mono text-emerald-800 text-sm font-black">
-                          {formatCurrency(viewingLPJ.totalSpent)}
+                          {formatCurrency(getCalculatedSpent(viewingLPJ))}
                         </td>
                       </tr>
                     </tfoot>
@@ -607,20 +705,27 @@ export const BaktiSosial: React.FC = () => {
               </div>
 
               {/* Budget vs Realization Variance Analysis */}
-              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Anggaran vs Realisasi</span>
-                  <span className="font-extrabold text-slate-900 text-xs">
-                    Anggaran: {formatCurrency(viewingLPJ.totalBudget)} | Realisasi: {formatCurrency(viewingLPJ.totalSpent)}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-emerald-800 uppercase block">Selisih Varian</span>
-                  <span className="font-mono font-black text-emerald-800 text-sm">
-                    {formatCurrency(viewingLPJ.totalBudget - viewingLPJ.totalSpent)} ({viewingLPJ.totalBudget >= viewingLPJ.totalSpent ? 'Efisiensi Kas' : 'Defisit Tercover'})
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const realSpent = getCalculatedSpent(viewingLPJ);
+                const variance = viewingLPJ.totalBudget - realSpent;
+
+                return (
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 text-xs flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Anggaran vs Realisasi SPJ</span>
+                      <span className="font-extrabold text-slate-900 text-xs">
+                        Pagu Anggaran: {formatCurrency(viewingLPJ.totalBudget)} | Total Realisasi SPJ: {formatCurrency(realSpent)}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Selisih Varian SPJ</span>
+                      <span className={`font-mono font-black text-sm ${variance >= 0 ? 'text-emerald-800' : 'text-red-700'}`}>
+                        {formatCurrency(Math.abs(variance))} ({variance >= 0 ? 'Efisiensi Sisa Kas' : 'Defisit Tercover'})
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Documentation Photos Grid */}
               {viewingLPJ.documentationUrls && viewingLPJ.documentationUrls.length > 0 && (
@@ -696,7 +801,7 @@ export const BaktiSosial: React.FC = () => {
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-indigo-600" />
-                Foto Nota Bukti Pengeluaran
+                Foto Nota Bukti SPJ Pengeluaran
               </h4>
               <button
                 type="button"
@@ -710,7 +815,7 @@ export const BaktiSosial: React.FC = () => {
             <div className="rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 max-h-96 flex items-center justify-center">
               <img
                 src={viewingProofImage}
-                alt="Bukti Kwitansi / Nota"
+                alt="Bukti Kwitansi / Nota SPJ"
                 className="max-h-96 w-auto object-contain"
               />
             </div>
@@ -719,7 +824,7 @@ export const BaktiSosial: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewingProofImage(null)}
-                className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl"
+                className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl cursor-pointer"
               >
                 Tutup Preview
               </button>
@@ -851,16 +956,16 @@ export const BaktiSosial: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Receipt className="w-4 h-4 text-indigo-600" />
-                    Rincian Item Pengeluaran & Nota Transaksi
+                    Rincian Item Pengeluaran SPJ & Nota
                   </span>
                   <span className="text-xs font-mono font-bold text-emerald-700">
-                    Total: {formatCurrency(newSoc.expenses.reduce((sum, e) => sum + e.amount, 0))}
+                    Total Realisasi: {formatCurrency(getCalculatedSpent(newSoc))}
                   </span>
                 </div>
 
                 {/* Added expense items list */}
                 <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {newSoc.expenses.map((exp, idx) => (
+                  {newSoc.expenses.map((exp) => (
                     <div key={exp.id} className="flex items-center justify-between text-xs p-2.5 bg-white rounded-xl border border-slate-200 gap-2">
                       <div className="truncate flex-1">
                         <span className="font-bold text-slate-900 block">{exp.item}</span>
@@ -869,8 +974,8 @@ export const BaktiSosial: React.FC = () => {
                       <span className="font-mono font-bold text-slate-800 shrink-0">{formatCurrency(exp.amount)}</span>
                       <button
                         type="button"
-                        onClick={() => handleRemoveExpenseItem(exp.id)}
-                        className="text-red-500 hover:text-red-700 p-1"
+                        onClick={() => handleRemoveExpenseItem(exp.id, 'new')}
+                        className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -907,11 +1012,11 @@ export const BaktiSosial: React.FC = () => {
                   <div className="flex items-center gap-2 text-xs">
                     <label className="cursor-pointer px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1 text-[11px]">
                       <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-                      {tempExpenseItem.proofUrl ? '✓ Foto Nota Terlampir' : 'Unggah Foto Nota/Kwitansi'}
+                      {tempExpenseItem.proofUrl ? '✓ Foto Nota Terlampir' : 'Unggah Foto Nota SPJ'}
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={handleFileUploadReceipt}
+                        onChange={e => handleFileUploadReceipt(e)}
                         className="hidden"
                       />
                     </label>
@@ -919,10 +1024,10 @@ export const BaktiSosial: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={handleAddExpenseItem}
+                    onClick={() => handleAddExpenseItem('new')}
                     className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Tambah Item
+                    <Plus className="w-3.5 h-3.5" /> Tambah Item SPJ
                   </button>
                 </div>
               </div>
@@ -940,7 +1045,7 @@ export const BaktiSosial: React.FC = () => {
                       <img src={url} alt="Dokumentasi" className="w-full h-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => handleRemoveDocUrl(idx)}
+                        onClick={() => setNewSoc(prev => ({ ...prev, documentationUrls: prev.documentationUrls.filter((_, i) => i !== idx) }))}
                         className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full shadow-md hover:bg-red-700"
                       >
                         <X className="w-3 h-3" />
@@ -955,7 +1060,7 @@ export const BaktiSosial: React.FC = () => {
                       type="file"
                       accept="image/*"
                       multiple
-                      onChange={handleFileUploadDoc}
+                      onChange={e => handleFileUploadDoc(e, false)}
                       className="hidden"
                     />
                   </label>
@@ -971,7 +1076,12 @@ export const BaktiSosial: React.FC = () => {
                   />
                   <button
                     type="button"
-                    onClick={handleAddDocUrl}
+                    onClick={() => {
+                      if (tempDocUrl.trim()) {
+                        setNewSoc(prev => ({ ...prev, documentationUrls: [...prev.documentationUrls, tempDocUrl.trim()] }));
+                        setTempDocUrl('');
+                      }
+                    }}
                     className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer"
                   >
                     Tambah URL
@@ -994,7 +1104,7 @@ export const BaktiSosial: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
                 >
                   Batal
                 </button>
@@ -1003,6 +1113,263 @@ export const BaktiSosial: React.FC = () => {
                   className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-xs cursor-pointer"
                 >
                   Simpan Laporan Baksos & LPJ
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Bakti Sosial & SPJ Modal */}
+      {editingSoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 my-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-black text-base text-slate-900">Edit Data Baksos & Rincian SPJ</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Sesuaikan rincian pengeluaran, nota bukti transaksi, dan foto dokumentasi.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSoc(null)}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditSocial} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Kegiatan *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingSoc.title}
+                  onChange={e => setEditingSoc({ ...editingSoc, title: e.target.value })}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-bold outline-hidden"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Tanggal *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editingSoc.date}
+                    onChange={e => setEditingSoc({ ...editingSoc, date: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-semibold outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Lokasi *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingSoc.location}
+                    onChange={e => setEditingSoc({ ...editingSoc, location: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Penanggung Jawab (PIC)</label>
+                  <input
+                    type="text"
+                    value={editingSoc.picName || ''}
+                    onChange={e => setEditingSoc({ ...editingSoc, picName: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Sumber Pendanaan</label>
+                  <input
+                    type="text"
+                    value={editingSoc.fundSource}
+                    onChange={e => setEditingSoc({ ...editingSoc, fundSource: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Penerima Manfaat</label>
+                  <input
+                    type="text"
+                    value={editingSoc.beneficiaries}
+                    onChange={e => setEditingSoc({ ...editingSoc, beneficiaries: e.target.value })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Total Pagu Anggaran (Rp)</label>
+                  <input
+                    type="number"
+                    value={editingSoc.totalBudget}
+                    onChange={e => setEditingSoc({ ...editingSoc, totalBudget: Number(e.target.value) })}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-mono font-bold outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Expenses Breakdown Input inside Edit Modal */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 text-indigo-600" />
+                    Rincian Item SPJ ({editingSoc.expenses?.length || 0} Item)
+                  </span>
+                  <span className="text-xs font-mono font-bold text-emerald-700">
+                    Total Realisasi: {formatCurrency(getCalculatedSpent(editingSoc))}
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                  {editingSoc.expenses?.map((exp) => (
+                    <div key={exp.id} className="p-3 bg-white rounded-xl border border-slate-200 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">{exp.item}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-emerald-800">{formatCurrency(exp.amount)}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExpenseItem(exp.id, 'edit')}
+                            className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                        <span>{exp.notes || 'Tanpa catatan nota'}</span>
+                        <label className="cursor-pointer font-bold text-indigo-600 hover:underline flex items-center gap-1">
+                          {exp.proofUrl ? '✓ Terlampir Foto Nota (Ubah)' : '📷 Unggah Nota SPJ'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={e => handleFileUploadReceipt(e, exp.id, true)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Subform to add an expense item */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200">
+                  <input
+                    type="text"
+                    value={tempExpenseItem.item}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, item: e.target.value })}
+                    placeholder="Tambah item baru..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 outline-hidden"
+                  />
+                  <input
+                    type="number"
+                    value={tempExpenseItem.amount || ''}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, amount: Number(e.target.value) })}
+                    placeholder="Nominal (Rp)..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 font-mono font-bold outline-hidden"
+                  />
+                  <input
+                    type="text"
+                    value={tempExpenseItem.notes}
+                    onChange={e => setTempExpenseItem({ ...tempExpenseItem, notes: e.target.value })}
+                    placeholder="Catatan toko/nota..."
+                    className="text-xs p-2 bg-white rounded-lg border border-slate-300 outline-hidden"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <label className="cursor-pointer text-xs font-bold text-indigo-700 hover:underline flex items-center gap-1">
+                    <Receipt className="w-3.5 h-3.5" />
+                    {tempExpenseItem.proofUrl ? '✓ Foto Nota Baru Terlampir' : 'Unggah Nota untuk Item Baru'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => handleFileUploadReceipt(e)}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => handleAddExpenseItem('edit')}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tambah Item
+                  </button>
+                </div>
+              </div>
+
+              {/* Photo Documentation Input inside Edit Modal */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <ImageIcon className="w-4 h-4 text-emerald-600" />
+                  Foto Dokumentasi Lapangan ({editingSoc.documentationUrls?.length || 0} Foto)
+                </span>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {editingSoc.documentationUrls?.map((url, idx) => (
+                    <div key={idx} className="relative h-20 rounded-xl overflow-hidden border border-slate-200 group bg-slate-200">
+                      <img src={url} alt="Dokumentasi" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setEditingSoc({ ...editingSoc, documentationUrls: editingSoc.documentationUrls.filter((_, i) => i !== idx) })}
+                        className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full shadow-md hover:bg-red-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <label className="h-20 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-white flex flex-col items-center justify-center cursor-pointer text-slate-400 hover:text-indigo-600 transition-colors p-2 text-center">
+                    <Plus className="w-5 h-5 mb-0.5" />
+                    <span className="text-[10px] font-bold">Unggah Foto</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={e => handleFileUploadDoc(e, true)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Catatan LPJ & Evaluasi</label>
+                <textarea
+                  rows={2}
+                  value={editingSoc.lpjNotes || ''}
+                  onChange={e => setEditingSoc({ ...editingSoc, lpjNotes: e.target.value })}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 outline-hidden"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingSoc(null)}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" /> Simpan Perubahan SPJ
                 </button>
               </div>
             </form>

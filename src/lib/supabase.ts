@@ -484,6 +484,7 @@ export async function pushAllDataToSupabase(data: {
       description: t.description,
       proof_url: safeImagePayload(t.proofUrl) || t.proofUrl || null,
       related_payment_id: t.relatedPaymentId || null,
+      related_social_id: t.relatedSocialId || null,
       recorded_by: t.recordedBy || null,
       created_at: toIsoTimestamp(t.createdAt),
     }));
@@ -725,6 +726,7 @@ export async function pullAllDataFromSupabase(): Promise<{
       description: t.description,
       proofUrl: t.proof_url || undefined,
       relatedPaymentId: t.related_payment_id || undefined,
+      relatedSocialId: t.related_social_id || undefined,
       recordedBy: t.recorded_by || undefined,
       createdAt: t.created_at,
     }));

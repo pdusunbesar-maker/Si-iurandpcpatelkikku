@@ -107,6 +107,7 @@ interface AppContextType {
   addDonation: (don: Omit<Donation, 'id' | 'createdAt'>) => void;
   deleteDonation: (id: string) => void;
   addSocialService: (soc: Omit<SocialService, 'id' | 'createdAt'>) => void;
+  updateSocialService: (id: string, soc: Partial<SocialService>) => void;
   deleteSocialService: (id: string) => void;
 
   // Actions - Bank Accounts & Settings
@@ -1113,7 +1114,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setSocialServices(prev => [newSoc, ...prev]);
 
-    // If there is actual expense spent, record to Cashbook if desired
+    // Automatically add corresponding expense transaction to Cashbook with relatedSocialId
     if (soc.totalSpent > 0) {
       addTransaction({
         date: soc.date,
@@ -1123,13 +1124,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amount: soc.totalSpent,
         description: `Pengeluaran Kegiatan Bakti Sosial di ${soc.location}`,
         proofUrl: soc.documentationUrls[0] || undefined,
+        relatedSocialId: newId,
       });
     }
   };
 
+  const updateSocialService = (id: string, socData: Partial<SocialService>) => {
+    let updatedSoc: SocialService | null = null;
+
+    setSocialServices(prev =>
+      prev.map(s => {
+        if (s.id === id) {
+          const updated = { ...s, ...socData };
+          if (updated.expenses && updated.expenses.length > 0) {
+            updated.totalSpent = updated.expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          }
+          updatedSoc = updated;
+          return updated;
+        }
+        return s;
+      })
+    );
+
+    // Sync corresponding cashbook transaction
+    if (updatedSoc) {
+      const current = updatedSoc as SocialService;
+      setTransactions(prev =>
+        prev.map(t => {
+          if (t.relatedSocialId === id || (t.category === 'Bakti Sosial & Pengabdian' && t.sourceOrRecipient === current.title)) {
+            return {
+              ...t,
+              date: current.date,
+              amount: current.totalSpent,
+              sourceOrRecipient: current.title,
+              description: `Pengeluaran Kegiatan Bakti Sosial di ${current.location}`,
+              proofUrl: current.documentationUrls[0] || t.proofUrl,
+              relatedSocialId: id,
+            };
+          }
+          return t;
+        })
+      );
+    }
+
+    if (isSupabaseActive) {
+      syncUploadToSupabase().catch(console.error);
+    }
+  };
+
   const deleteSocialService = (id: string) => {
+    const targetSoc = socialServices.find(s => s.id === id);
+
+    // 1. Remove from Social Services state
     setSocialServices(prev => prev.filter(s => s.id !== id));
+
+    // 2. Automatically remove linked expense transactions from Cashbook (Buku Kas Keluar)
+    setTransactions(prev =>
+      prev.filter(t => {
+        if (t.relatedSocialId === id) return false;
+        if (targetSoc && t.category === 'Bakti Sosial & Pengabdian' && t.sourceOrRecipient === targetSoc.title) return false;
+        return true;
+      })
+    );
+
+    // 3. Delete from Supabase database tables
     deleteFromSupabase('social_services', 'id', id).catch(console.error);
+    deleteFromSupabase('cash_transactions', 'related_social_id', id).catch(console.error);
   };
 
   // Bank Accounts
@@ -1486,6 +1546,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addDonation,
         deleteDonation,
         addSocialService,
+        updateSocialService,
         deleteSocialService,
         addBankAccount,
         updateBankAccount,

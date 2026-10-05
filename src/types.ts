@@ -63,6 +63,7 @@ export interface CashTransaction {
   description: string;
   proofUrl?: string;
   relatedPaymentId?: string;
+  relatedSocialId?: string; // Link to social service record if created from baksos
   recordedBy?: string;
   createdAt: string;
 }
