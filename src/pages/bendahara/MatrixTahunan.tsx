@@ -36,10 +36,12 @@ export const MatrixTahunan: React.FC = () => {
   });
 
   // Calculate year stats for a member
-  const getMemberYearStat = (memberId: string, year: number) => {
-    const records = duesRecords.filter(d => d.memberId === memberId && d.year === year);
+  const getMemberYearStat = (member: any, year: number) => {
+    const records = duesRecords.filter(
+      d => (d.memberId === member.id || (member.nap && d.memberId === member.nap)) && d.year === year
+    );
     const paidCount = records.filter(d => d.status === 'paid').length;
-    const isInactive = records.every(d => d.status === 'inactive');
+    const isInactive = records.length > 0 && records.every(d => d.status === 'inactive');
 
     if (isInactive) return { text: '—', status: 'inactive', paidCount: 0 };
     return {
@@ -60,7 +62,7 @@ export const MatrixTahunan: React.FC = () => {
 
       let totalArrears = 0;
       years.forEach(yr => {
-        const stat = getMemberYearStat(m.id, yr);
+        const stat = getMemberYearStat(m, yr);
         row[`Tahun ${yr}`] = stat.text;
         // up to 2026 calculate arrears
         if (yr <= 2026 && m.status === 'aktif') {
@@ -198,7 +200,7 @@ export const MatrixTahunan: React.FC = () => {
 
                     {/* Years Columns */}
                     {years.map(yr => {
-                      const stat = getMemberYearStat(m.id, yr);
+                      const stat = getMemberYearStat(m, yr);
 
                       return (
                         <td key={yr} className="py-3 px-2 border-l border-slate-100">

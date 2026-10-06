@@ -971,7 +971,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newSub: PaymentSubmission = {
       id: subId,
       memberId: data.memberId,
-      memberName: member ? `${member.nama}, ${member.gelar}` : 'Anggota',
+      memberName: member ? `${member.nama}, ${member.gelar || ''}`.trim() : 'Anggota',
       memberNap: member?.nap || '',
       memberWa: normalizePhoneNumber(member?.noWa || ''),
       memberInstansi: member?.instansi || '',
@@ -987,20 +987,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notes: data.notes,
     };
 
-    setPaymentSubmissions(prev => [newSub, ...prev]);
+    const nextSubmissions = [newSub, ...paymentSubmissions];
 
     // Update the dues records to pending
-    setDuesRecords(prev =>
-      prev.map(d => {
-        if (
-          d.memberId === data.memberId &&
-          data.months.some(m => m.year === d.year && m.month === d.month)
-        ) {
-          return { ...d, status: 'pending', paymentId: subId };
-        }
-        return d;
-      })
-    );
+    const nextDues = duesRecords.map(d => {
+      if (
+        (d.memberId === data.memberId || (member && d.memberId === member.nap)) &&
+        data.months.some(m => m.year === d.year && m.month === d.month)
+      ) {
+        return { ...d, status: 'pending' as const, paymentId: subId };
+      }
+      return d;
+    });
+
+    setPaymentSubmissions(nextSubmissions);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_submissions', JSON.stringify(nextSubmissions));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
 
     // Create Notification for bendahara
     addNotification({
@@ -1019,6 +1023,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'info',
     });
 
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions: nextSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
+
     return subId;
   };
 
@@ -1029,38 +1046,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nowStr = new Date().toLocaleString('id-ID');
     const nowIsoDate = new Date().toISOString().split('T')[0];
 
-    // 1. Update submission status
-    setPaymentSubmissions(prev =>
-      prev.map(s =>
-        s.id === submissionId
-          ? {
-              ...s,
-              status: 'approved',
-              verifiedAt: nowStr,
-              verifiedBy: settings.bendaharaName,
-              notes: notes || s.notes,
-            }
-          : s
-      )
+    // 1. Update submission status to 'approved'
+    const nextSubmissions = paymentSubmissions.map(s =>
+      s.id === submissionId
+        ? {
+            ...s,
+            status: 'approved' as const,
+            verifiedAt: nowStr,
+            verifiedBy: settings.bendaharaName,
+            notes: notes || s.notes,
+          }
+        : s
     );
 
     // 2. Update all corresponding months to 'paid'
-    setDuesRecords(prev =>
-      prev.map(d => {
-        if (
-          d.memberId === sub.memberId &&
-          sub.months.some(m => m.year === d.year && m.month === d.month)
-        ) {
-          return {
-            ...d,
-            status: 'paid',
-            paymentId: sub.id,
-            updatedAt: nowIsoDate,
-          };
-        }
-        return d;
-      })
-    );
+    const nextDues = duesRecords.map(d => {
+      if (
+        (d.memberId === sub.memberId || d.memberId === sub.memberNap) &&
+        sub.months.some(m => m.year === d.year && m.month === d.month)
+      ) {
+        return {
+          ...d,
+          status: 'paid' as const,
+          paymentId: sub.id,
+          updatedAt: nowIsoDate,
+        };
+      }
+      return d;
+    });
 
     // 3. Automatically add to Cashbook (Buku Kas Masuk)
     const monthDescriptions = sub.months
@@ -1081,9 +1094,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: nowStr,
     };
 
-    setTransactions(prev => [newTx, ...prev]);
+    const nextTransactions = [newTx, ...transactions];
 
-    // 4. Send Member In-App Notification
+    // 4. Update React State & LocalStorage immediately
+    setPaymentSubmissions(nextSubmissions);
+    setDuesRecords(nextDues);
+    setTransactions(nextTransactions);
+
+    localStorage.setItem('patelki_submissions', JSON.stringify(nextSubmissions));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
+    // 5. Send Member In-App Notification
     addNotification({
       recipientId: sub.memberId,
       title: 'Pembayaran Disetujui! 🎉',
@@ -1092,8 +1114,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       link: 'riwayat',
     });
 
-    // Force sync
-    await syncUploadToSupabase();
+    // 6. Push exact updated state to Supabase so it never reverts!
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions: nextSubmissions,
+        transactions: nextTransactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const rejectPayment = async (submissionId: string, reason: string) => {
@@ -1102,44 +1135,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nowStr = new Date().toLocaleString('id-ID');
 
-    setPaymentSubmissions(prev =>
-      prev.map(s =>
-        s.id === submissionId
-          ? {
-              ...s,
-              status: 'rejected',
-              verifiedAt: nowStr,
-              verifiedBy: settings.bendaharaName,
-              rejectionReason: reason,
-            }
-          : s
-      )
+    // 1. Update submission status to 'rejected'
+    const nextSubmissions = paymentSubmissions.map(s =>
+      s.id === submissionId
+        ? {
+            ...s,
+            status: 'rejected' as const,
+            verifiedAt: nowStr,
+            verifiedBy: settings.bendaharaName,
+            rejectionReason: reason,
+          }
+        : s
     );
 
-    // Reset dues back to unpaid
-    setDuesRecords(prev =>
-      prev.map(d => {
-        if (
-          d.memberId === sub.memberId &&
-          sub.months.some(m => m.year === d.year && m.month === d.month)
-        ) {
-          return { ...d, status: 'unpaid', paymentId: undefined };
-        }
-        return d;
-      })
-    );
-
-    // Notify Member
-    addNotification({
-      recipientId: sub.memberId,
-      title: 'Pembayaran Iuran Ditolak ⚠️',
-      message: `Pengajuan pembayaran iuran Anda sebesar Rp ${sub.totalAmount.toLocaleString('id-ID')} ditolak. Alasan: "${reason}". Silakan periksa atau unggah ulang bukti yang benar.`,
-      type: 'danger',
-      link: 'bayar',
+    // 2. Reset dues back to 'unpaid'
+    const nextDues = duesRecords.map(d => {
+      if (
+        (d.memberId === sub.memberId || d.memberId === sub.memberNap) &&
+        sub.months.some(m => m.year === d.year && m.month === d.month)
+      ) {
+        return { ...d, status: 'unpaid' as const, paymentId: undefined };
+      }
+      return d;
     });
 
-    // Force sync
-    await syncUploadToSupabase();
+    // 3. Update React State & LocalStorage immediately
+    setPaymentSubmissions(nextSubmissions);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_submissions', JSON.stringify(nextSubmissions));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    // 4. Send Member Notification
+    addNotification({
+      recipientId: sub.memberId,
+      title: 'Pembayaran Ditolak',
+      message: `Pengajuan iuran Anda sebesar Rp ${sub.totalAmount.toLocaleString('id-ID')} ditolak dengan alasan: ${reason}`,
+      type: 'danger',
+    });
+
+    // 5. Push exact updated state to Supabase
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions: nextSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Cash transactions

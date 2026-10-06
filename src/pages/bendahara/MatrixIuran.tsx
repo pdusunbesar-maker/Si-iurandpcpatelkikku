@@ -329,7 +329,7 @@ export const MatrixIuran: React.FC = () => {
                     {/* 12 Months Cells */}
                     {Array.from({ length: 12 }, (_, i) => i + 1).map(month => {
                       const record = duesRecords.find(
-                        d => d.memberId === m.id && d.year === selectedYear && d.month === month
+                        d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear && d.month === month
                       );
                       const status = record?.status || (m.status === 'nonaktif' ? 'inactive' : 'unpaid');
                       if (status === 'paid') memberTotalPaid += settings.monthlyFee;
