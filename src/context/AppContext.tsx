@@ -236,50 +236,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSupabaseActive, setIsSupabaseActive] = useState<boolean>(isSupabaseConfigured);
   const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
 
-  // Auto load from Supabase if configured on startup with bi-directional safety
+  // Auto load from Supabase if configured on startup with bi-directional safety & local-first status precedence
   useEffect(() => {
     if (isSupabaseConfigured()) {
       pullAllDataFromSupabase().then(async (res) => {
         if (res.success && res.data) {
-          const hasRemoteData =
-            (res.data.members && res.data.members.length > 0) ||
-            (res.data.transactions && res.data.transactions.length > 0) ||
-            (res.data.duesRecords && res.data.duesRecords.length > 0) ||
-            (res.data.paymentSubmissions && res.data.paymentSubmissions.length > 0) ||
-            (res.data.donations && res.data.donations.length > 0) ||
-            (res.data.socialServices && res.data.socialServices.length > 0);
+          // Merge local state with remote data (local 'approved' / 'paid' takes precedence over remote 'pending' / 'unpaid')
+          const mergedSubmissions = (() => {
+            const remoteMap = new Map((res.data.paymentSubmissions || []).map(s => [s.id, s]));
+            paymentSubmissions.forEach(localSub => {
+              const remoteSub = remoteMap.get(localSub.id);
+              if (remoteSub) {
+                if (localSub.status === 'approved' && remoteSub.status === 'pending') {
+                  remoteSub.status = 'approved';
+                }
+              } else {
+                remoteMap.set(localSub.id, localSub);
+              }
+            });
+            return Array.from(remoteMap.values());
+          })();
 
-          if (hasRemoteData) {
-            // Remote database has records: populate state safely
-            if (res.data.members && res.data.members.length > 0) setMembers(res.data.members);
-            if (res.data.duesRecords && res.data.duesRecords.length > 0) setDuesRecords(res.data.duesRecords);
-            if (res.data.paymentSubmissions && res.data.paymentSubmissions.length > 0) setPaymentSubmissions(res.data.paymentSubmissions);
-            if (res.data.transactions && res.data.transactions.length > 0) setTransactions(res.data.transactions);
-            if (res.data.donations && res.data.donations.length > 0) setDonations(res.data.donations);
-            if (res.data.socialServices && res.data.socialServices.length > 0) setSocialServices(res.data.socialServices);
-            if (res.data.bankAccounts && res.data.bankAccounts.length > 0) {
-              setBankAccounts(res.data.bankAccounts);
-            }
-            if (res.data.settings) {
-              setSettings(res.data.settings);
-            }
-          } else {
-            // Remote is empty, but local has data: seed remote with local data so user data is never lost!
-            const localHasData = members.length > 0 || transactions.length > 0;
-            if (localHasData) {
-              await pushAllDataToSupabase({
-                members,
-                duesRecords,
-                paymentSubmissions,
-                transactions,
-                donations,
-                socialServices,
-                bankAccounts,
-                settings,
-              }).catch(console.warn);
-            }
+          const mergedDues = (() => {
+            const remoteMap = new Map((res.data.duesRecords || []).map(d => [`${d.memberId}-${d.year}-${d.month}`, d]));
+            duesRecords.forEach(localD => {
+              const key = `${localD.memberId}-${localD.year}-${localD.month}`;
+              const remoteD = remoteMap.get(key);
+              if (remoteD) {
+                if (localD.status === 'paid' && remoteD.status !== 'paid') {
+                  remoteD.status = 'paid';
+                  remoteD.paymentId = localD.paymentId;
+                }
+              } else {
+                remoteMap.set(key, localD);
+              }
+            });
+            return Array.from(remoteMap.values());
+          })();
+
+          if (res.data.members && res.data.members.length > 0) setMembers(res.data.members);
+          setDuesRecords(mergedDues);
+          setPaymentSubmissions(mergedSubmissions);
+          if (res.data.transactions && res.data.transactions.length > 0) {
+            const txMap = new Map(res.data.transactions.map(t => [t.id, t]));
+            transactions.forEach(t => txMap.set(t.id, t));
+            setTransactions(Array.from(txMap.values()));
           }
+          if (res.data.donations && res.data.donations.length > 0) setDonations(res.data.donations);
+          if (res.data.socialServices && res.data.socialServices.length > 0) setSocialServices(res.data.socialServices);
+          if (res.data.bankAccounts && res.data.bankAccounts.length > 0) setBankAccounts(res.data.bankAccounts);
+          if (res.data.settings) setSettings(res.data.settings);
+
           setIsSupabaseActive(true);
+
+          // Push authoritative merged state back to Supabase to heal remote table
+          pushAllDataToSupabase({
+            members: res.data.members || members,
+            duesRecords: mergedDues,
+            paymentSubmissions: mergedSubmissions,
+            transactions: res.data.transactions || transactions,
+            donations: res.data.donations || donations,
+            socialServices: res.data.socialServices || socialServices,
+            bankAccounts: res.data.bankAccounts || bankAccounts,
+            settings: res.data.settings || settings,
+          }).catch(console.warn);
         }
         isInitialSyncDone.current = true;
       }).catch(err => {
