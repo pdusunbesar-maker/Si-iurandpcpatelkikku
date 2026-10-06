@@ -100,6 +100,7 @@ interface AppContextType {
   }) => string;
   approvePayment: (submissionId: string, notes?: string) => Promise<void>;
   rejectPayment: (submissionId: string, reason: string) => Promise<void>;
+  deletePaymentSubmission: (id: string) => Promise<void>;
 
   // Actions - Finance
   addTransaction: (tx: Omit<CashTransaction, 'id' | 'createdAt'>) => void;
@@ -1248,6 +1249,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deletePaymentSubmission = async (id: string) => {
+    const nextSubmissions = paymentSubmissions.filter(s => s.id !== id);
+
+    const nextDues = duesRecords.map(d => {
+      if (d.paymentId === id) {
+        return {
+          ...d,
+          status: 'unpaid' as const,
+          paymentId: undefined,
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      }
+      return d;
+    });
+
+    const nextTransactions = transactions.filter(t => t.relatedPaymentId !== id);
+
+    setPaymentSubmissions(nextSubmissions);
+    setDuesRecords(nextDues);
+    setTransactions(nextTransactions);
+
+    localStorage.setItem('patelki_submissions', JSON.stringify(nextSubmissions));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
+    deleteFromSupabase('payment_submissions', 'id', id).catch(console.error);
+    deleteFromSupabase('cash_transactions', 'related_payment_id', id).catch(console.error);
+
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions: nextSubmissions,
+        transactions: nextTransactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
+  };
+
   // Cash transactions
   const addTransaction = (tx: Omit<CashTransaction, 'id' | 'createdAt'>) => {
     const newTx: CashTransaction = {
@@ -1258,9 +1301,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions(prev => [newTx, ...prev]);
   };
 
-  const deleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
+  const deleteTransaction = async (id: string) => {
+    const nextTransactions = transactions.filter(t => t.id !== id);
+    setTransactions(nextTransactions);
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
     deleteFromSupabase('cash_transactions', 'id', id).catch(console.error);
+
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions: nextTransactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Donations
@@ -1271,7 +1330,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newId,
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setDonations(prev => [newDon, ...prev]);
+    const nextDonations = [newDon, ...donations];
+    setDonations(nextDonations);
+    localStorage.setItem('patelki_donations', JSON.stringify(nextDonations));
 
     // Automatically record as income in Cashbook
     addTransaction({
@@ -1285,9 +1346,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const deleteDonation = (id: string) => {
-    setDonations(prev => prev.filter(d => d.id !== id));
+  const deleteDonation = async (id: string) => {
+    const nextDonations = donations.filter(d => d.id !== id);
+    setDonations(nextDonations);
+    localStorage.setItem('patelki_donations', JSON.stringify(nextDonations));
+
     deleteFromSupabase('donations', 'id', id).catch(console.error);
+
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions,
+        donations: nextDonations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Social Services
@@ -1420,9 +1497,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBankAccounts(prev => prev.map(b => (b.id === id ? { ...b, ...acc } : b)));
   };
 
-  const deleteBankAccount = (id: string) => {
-    setBankAccounts(prev => prev.filter(b => b.id !== id));
+  const deleteBankAccount = async (id: string) => {
+    const nextBankAccounts = bankAccounts.filter(b => b.id !== id);
+    setBankAccounts(nextBankAccounts);
+    localStorage.setItem('patelki_bank_accounts', JSON.stringify(nextBankAccounts));
+
     deleteFromSupabase('bank_accounts', 'id', id).catch(console.error);
+
+    if (isSupabaseActive) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts: nextBankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Settings
@@ -1759,6 +1852,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         submitPayment,
         approvePayment,
         rejectPayment,
+        deletePaymentSubmission,
         addTransaction,
         deleteTransaction,
         addDonation,

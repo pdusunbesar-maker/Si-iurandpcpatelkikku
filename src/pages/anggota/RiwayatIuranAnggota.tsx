@@ -15,6 +15,7 @@ import {
   Calendar,
   CreditCard,
   MessageCircle,
+  Trash2,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -27,12 +28,18 @@ interface RiwayatIuranAnggotaProps {
 }
 
 export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavigate }) => {
-  const { currentMember, paymentSubmissions, formatCurrency, settings, generateWhatsAppLink } = useApp();
+  const { currentMember, paymentSubmissions, formatCurrency, settings, generateWhatsAppLink, deletePaymentSubmission } = useApp();
 
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentSubmission | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   if (!currentMember) return null;
+
+  const handleDeleteSubmission = async (id: string, periodText: string) => {
+    if (window.confirm(`Apakah Anda yakin ingin menghapus permanen kuitansi / pengajuan untuk periode "${periodText}"? Data akan dihapus dari aplikasi dan database Supabase.`)) {
+      await deletePaymentSubmission(id);
+    }
+  };
 
   // Filter ONLY current member's submissions (Privacy protection)
   const mySubmissions = paymentSubmissions.filter(
@@ -201,6 +208,15 @@ export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavi
                         Upload Ulang
                       </button>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSubmission(sub.id, periodText)}
+                      className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors shrink-0"
+                      title="Hapus Permanen"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               );
@@ -328,6 +344,15 @@ export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavi
                                 Upload Ulang
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSubmission(sub.id, periodText)}
+                              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus Permanen Kuitansi / Pengajuan"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
