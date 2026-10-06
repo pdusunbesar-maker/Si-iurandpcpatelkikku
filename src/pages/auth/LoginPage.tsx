@@ -27,6 +27,7 @@ export const LoginPage: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Switch tab resets inputs
   const handleRoleTabChange = (role: UserRole) => {
@@ -36,7 +37,7 @@ export const LoginPage: React.FC = () => {
     setPassword('');
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -44,14 +45,21 @@ export const LoginPage: React.FC = () => {
       setErrorMessage(
         activeRole === 'bendahara'
           ? 'Masukkan username atau NAP Bendahara!'
-          : 'Masukkan Nomor Anggota (NAP) Anda!'
+          : 'Masukkan Nomor Anggota (NAP), Nama, atau No. WhatsApp Anda!'
       );
       return;
     }
 
-    const res = login(activeRole, identifier, password);
-    if (!res.success) {
-      setErrorMessage(res.error || 'Login gagal. Periksa kembali username dan kata sandi Anda.');
+    setIsSubmitting(true);
+    try {
+      const res = await login(activeRole, identifier, password);
+      if (!res.success) {
+        setErrorMessage(res.error || 'Login gagal. Periksa kembali username dan kata sandi Anda.');
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Terjadi kesalahan saat masuk.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -130,7 +138,7 @@ export const LoginPage: React.FC = () => {
               <label className="block text-xs font-bold text-slate-700 mb-1.5">
                 {activeRole === 'bendahara'
                   ? 'Username / NAP Bendahara *'
-                  : 'Username Anggota (Nomor Anggota / NAP) *'}
+                  : 'Nomor Anggota (NAP) / Nama / No. WA *'}
               </label>
               <div className="relative">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
@@ -148,7 +156,7 @@ export const LoginPage: React.FC = () => {
                   placeholder={
                     activeRole === 'bendahara'
                       ? 'Username bendahara (default: bendahara)'
-                      : 'Masukkan NAP (contoh: 61.11.002)'
+                      : 'Masukkan NAP (misal: 61.11.002), Nama, atau No WA'
                   }
                   className="w-full pl-10 pr-4 py-3 text-xs sm:text-sm rounded-xl border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-hidden bg-slate-50 font-medium text-slate-900"
                 />

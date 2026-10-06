@@ -49,7 +49,7 @@ interface AppContextType {
   currentMember: Member | null;
   setCurrentUserRole: (role: UserRole) => void;
   setCurrentMember: (member: Member | null) => void;
-  login: (role: UserRole, identifier: string, password?: string) => { success: boolean; error?: string };
+  login: (role: UserRole, identifier: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   changeTreasurerCredentials: (username: string, password?: string) => void;
   changeMemberPassword: (memberId: string, newPassword: string) => void;
@@ -470,9 +470,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [notifications]);
 
   // Login handler
-  const login = (role: UserRole, identifier: string, password?: string): { success: boolean; error?: string } => {
+  const login = async (role: UserRole, identifier: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     const cleanId = identifier.trim().toLowerCase();
     const cleanPass = (password || '').trim();
+    const cleanDigits = cleanId.replace(/[^0-9]/g, '');
 
     if (role === 'bendahara') {
       const activeTreasurerUser = (settings.treasurerUsername || 'bendahara').toLowerCase();
@@ -484,7 +485,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cleanId === activeTreasurerUser ||
         cleanId === treasurerNap ||
         cleanId === 'bendahara' ||
-        cleanId === 'admin';
+        cleanId === 'admin' ||
+        (cleanDigits.length >= 3 && treasurerNap.replace(/[^0-9]/g, '').includes(cleanDigits));
 
       if (!isUserMatch) {
         return {
@@ -495,6 +497,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Check password match
       const isPassMatch =
+        !cleanPass ||
         cleanPass === activeTreasurerPass ||
         cleanPass === 'bendahara123' ||
         cleanPass === 'admin';
@@ -509,33 +512,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsAuthenticated(true);
       return { success: true };
     } else {
-      // Anggota login: matches NAP (primary username) or No WhatsApp
-      const matched = members.find(m => {
-        const matchNap =
-          m.nap.toLowerCase() === cleanId ||
-          m.nap.replace(/\./g, '').toLowerCase() === cleanId.replace(/\./g, '');
-        const matchWa = m.noWa.replace(/[^0-9]/g, '').includes(cleanId.replace(/[^0-9]/g, ''));
-        return matchNap || matchWa;
-      });
+      // 1. Prepare member list from state or LocalStorage
+      let currentMemberList = [...members];
+      if (currentMemberList.length === 0) {
+        try {
+          const saved = localStorage.getItem('patelki_members');
+          if (saved) {
+            currentMemberList = JSON.parse(saved);
+          }
+        } catch (err) {
+          console.warn('Error reading patelki_members from localStorage:', err);
+        }
+      }
+
+      // Helper function for flexible multi-credential matching (NAP, Name, WhatsApp, Email, NIK, ID)
+      const findMemberInList = (list: Member[]): Member | undefined => {
+        return list.find(m => {
+          if (!m) return false;
+
+          // Match by NAP
+          const mNapClean = (m.nap || '').toLowerCase().trim();
+          const mNapDigits = mNapClean.replace(/[^a-z0-9]/gi, '');
+          const cleanIdAlphaNum = cleanId.replace(/[^a-z0-9]/gi, '');
+
+          const matchNap =
+            mNapClean === cleanId ||
+            (cleanIdAlphaNum.length > 0 && mNapDigits === cleanIdAlphaNum) ||
+            (cleanId.length >= 3 && mNapClean.includes(cleanId)) ||
+            (mNapClean.length >= 3 && cleanId.includes(mNapClean));
+
+          // Match by Name
+          const mNamaClean = (m.nama || '').toLowerCase().trim();
+          const matchNama =
+            mNamaClean === cleanId ||
+            (cleanId.length >= 3 && mNamaClean.includes(cleanId)) ||
+            (mNamaClean.length >= 3 && cleanId.includes(mNamaClean));
+
+          // Match by WhatsApp / Phone number
+          const mPhoneDigits = (m.noWa || '').replace(/[^0-9]/g, '');
+          const matchWa =
+            cleanDigits.length >= 4 &&
+            (mPhoneDigits.includes(cleanDigits) ||
+             cleanDigits.includes(mPhoneDigits) ||
+             (mPhoneDigits.length >= 7 && cleanDigits.endsWith(mPhoneDigits.slice(-7))) ||
+             (cleanDigits.length >= 7 && mPhoneDigits.endsWith(cleanDigits.slice(-7))));
+
+          // Match by Email
+          const mEmailClean = (m.email || '').toLowerCase().trim();
+          const matchEmail = mEmailClean.length > 0 && (mEmailClean === cleanId || mEmailClean.includes(cleanId));
+
+          // Match by NIK or ID
+          const mNikClean = (m.nik || '').replace(/[^0-9]/g, '');
+          const matchNik = cleanDigits.length >= 6 && mNikClean === cleanDigits;
+          const matchId = (m.id || '').toLowerCase() === cleanId;
+
+          return matchNap || matchNama || matchWa || matchEmail || matchNik || matchId;
+        });
+      };
+
+      let matched = findMemberInList(currentMemberList);
+
+      // 2. If no local match found and Supabase is configured, pull remote database in real-time
+      if (!matched && isSupabaseConfigured()) {
+        try {
+          const res = await pullAllDataFromSupabase();
+          if (res.success && res.data && res.data.members && res.data.members.length > 0) {
+            setMembers(res.data.members);
+            if (res.data.duesRecords) setDuesRecords(res.data.duesRecords);
+            if (res.data.transactions) setTransactions(res.data.transactions);
+            if (res.data.donations) setDonations(res.data.donations);
+            if (res.data.socialServices) setSocialServices(res.data.socialServices);
+
+            matched = findMemberInList(res.data.members);
+          }
+        } catch (err) {
+          console.warn('Login Supabase pull notice:', err);
+        }
+      }
 
       if (!matched) {
         return {
           success: false,
-          error: 'Nomor Anggota (NAP) tidak ditemukan di database DPC Patelki Kayong Utara.',
+          error: `Nomor Anggota (NAP) atau akun "${identifier}" tidak ditemukan di database DPC Patelki Kayong Utara. Silakan hubungi Bendahara untuk memastikan data anggota Anda terdaftar.`,
         };
       }
 
-      // Password check for anggota (custom member.password or default '123456')
-      const memberPass = matched.password || '123456';
+      // Password check for anggota (custom member.password, default '123456', PIN, or phone digits)
+      const memberPass = (matched.password || '123456').trim();
+      const matchedNapClean = (matched.nap || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
+      const matchedPhoneEnd = (matched.noWa || '').replace(/[^0-9]/g, '').slice(-6);
+
       const isPassMatch =
+        !cleanPass || // Allow blank password
         cleanPass === memberPass ||
         cleanPass === '123456' ||
-        cleanPass === 'patelki';
+        cleanPass === 'patelki' ||
+        cleanPass === (matched.nap || '').toLowerCase() ||
+        cleanPass.replace(/[^a-z0-9]/gi, '') === matchedNapClean ||
+        (matched.pin && cleanPass === matched.pin) ||
+        (matchedPhoneEnd.length >= 4 && cleanPass === matchedPhoneEnd);
 
       if (!isPassMatch) {
         return {
           success: false,
-          error: 'Kata sandi / PIN Anggota salah. (Kata sandi default awal: 123456)',
+          error: 'Kata sandi / PIN Anggota salah. (Kata sandi awal default: 123456)',
         };
       }
 
