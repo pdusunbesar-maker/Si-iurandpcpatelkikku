@@ -461,6 +461,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [members, settings.startYear, settings.endYear, settings.monthlyFee]);
 
+  // Auto-healing: Ensure any approved payment submission has its corresponding dues records marked as 'paid'
+  useEffect(() => {
+    if (paymentSubmissions.length === 0 || duesRecords.length === 0) return;
+
+    let hasChanges = false;
+    const approvedSubs = paymentSubmissions.filter(s => s.status === 'approved');
+    if (approvedSubs.length === 0) return;
+
+    const nextDues = duesRecords.map(d => {
+      let shouldBePaid = false;
+      for (const sub of approvedSubs) {
+        const matchesMember =
+          d.memberId === sub.memberId ||
+          d.memberId === sub.memberNap ||
+          (sub.memberNap && d.memberId === sub.memberNap);
+        const matchesMonth = sub.months.some(m => m.year === d.year && m.month === d.month);
+        if (matchesMember && matchesMonth) {
+          shouldBePaid = true;
+          break;
+        }
+      }
+
+      if (shouldBePaid && d.status !== 'paid') {
+        hasChanges = true;
+        return {
+          ...d,
+          status: 'paid' as const,
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+      }
+      return d;
+    });
+
+    if (hasChanges) {
+      setDuesRecords(nextDues);
+      localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+    }
+  }, [paymentSubmissions]);
+
   useEffect(() => {
     localStorage.setItem('patelki_submissions', JSON.stringify(paymentSubmissions));
   }, [paymentSubmissions]);
