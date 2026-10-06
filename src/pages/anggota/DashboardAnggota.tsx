@@ -43,15 +43,15 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
 
   // Member dues analysis
   const memberDues2026 = duesRecords.filter(
-    d => d.memberId === currentMember.id && d.year === currentYear
+    d => (d.memberId === currentMember.id || (currentMember.nap && d.memberId === currentMember.nap)) && d.year === currentYear
   );
 
   const currentMonthRecord = memberDues2026.find(d => d.month === currentMonth);
   const currentMonthStatus = currentMonthRecord?.status || 'unpaid';
 
-  // Overall arrears (2025 up to Oct 2026)
+  // Overall arrears (2025 up to running calendar year)
   const allMemberDues = duesRecords.filter(
-    d => d.memberId === currentMember.id && d.year <= currentYear
+    d => (d.memberId === currentMember.id || (currentMember.nap && d.memberId === currentMember.nap)) && d.year <= currentYear
   );
 
   const unpaidRecords = allMemberDues.filter(
@@ -65,7 +65,9 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
   const totalArrears = unpaidRecords.reduce((sum, d) => sum + d.amount, 0);
 
   // Recent submissions
-  const mySubmissions = paymentSubmissions.filter(s => s.memberId === currentMember.id);
+  const mySubmissions = paymentSubmissions.filter(
+    s => s.memberId === currentMember.id || s.memberId === currentMember.nap || s.memberNap === currentMember.nap
+  );
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">

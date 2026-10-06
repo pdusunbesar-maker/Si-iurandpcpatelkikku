@@ -31,7 +31,7 @@ export const MatrixSaya: React.FC<MatrixSayaProps> = ({ onNavigate }) => {
   if (!currentMember) return null;
 
   const memberRecords = duesRecords.filter(
-    d => d.memberId === currentMember.id && d.year === selectedYear
+    d => (d.memberId === currentMember.id || (currentMember.nap && d.memberId === currentMember.nap)) && d.year === selectedYear
   );
 
   const paidCount = memberRecords.filter(d => d.status === 'paid').length;
@@ -47,7 +47,7 @@ export const MatrixSaya: React.FC<MatrixSayaProps> = ({ onNavigate }) => {
     // Check if there's an associated payment submission
     let matchingSub = paymentSubmissions.find(s => 
       s.id === rec.paymentId || 
-      (s.memberId === currentMember.id && s.months.some(m => m.year === selectedYear && m.month === monthNum))
+      (((s.memberId === currentMember.id || s.memberId === currentMember.nap) || s.memberNap === currentMember.nap) && s.months.some(m => m.year === selectedYear && m.month === monthNum))
     );
 
     if (!matchingSub) {

@@ -35,7 +35,9 @@ export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavi
   if (!currentMember) return null;
 
   // Filter ONLY current member's submissions (Privacy protection)
-  const mySubmissions = paymentSubmissions.filter(s => s.memberId === currentMember.id);
+  const mySubmissions = paymentSubmissions.filter(
+    s => s.memberId === currentMember.id || s.memberId === currentMember.nap || s.memberNap === currentMember.nap
+  );
 
   const handleContactBendaharaForSubmission = (sub: PaymentSubmission) => {
     const periodText = sub.months
