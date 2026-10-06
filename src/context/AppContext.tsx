@@ -1726,8 +1726,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetAllDataToDefault = async () => {
-    localStorage.clear();
-    localStorage.setItem('patelki_demo_purged_v5', 'true');
+    // Clear all patelki keys from localStorage
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('patelki_')) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    localStorage.setItem('patelki_demo_purged_v6', 'true');
+
     setMembers([]);
     setDuesRecords([]);
     setPaymentSubmissions([]);
@@ -1741,7 +1750,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentMember(null);
 
     // Clear remote supabase tables if connected
-    if (isSupabaseActive) {
+    if (isSupabaseConfigured() || isSupabaseActive) {
       const tables = [
         'members',
         'dues_records',

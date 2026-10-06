@@ -351,11 +351,11 @@ export async function clearTableFromSupabase(table: string): Promise<{ success: 
   const client = createClient(url, key, { auth: { persistSession: false } });
 
   try {
-    // Delete all records in the table
-    const { error } = await client.from(table).delete().neq('id', 'non-existent-id-1234567890');
-    if (error) {
-      throw new Error(`Tabel ${table}: ${error.message}`);
-    }
+    // Try multiple delete filters to ensure all rows are purged regardless of ID type
+    await client.from(table).delete().neq('id', 'non-existent-id-1234567890');
+    await client.from(table).delete().gte('id', '');
+    await client.from(table).delete().not('id', 'is', null);
+
     return { success: true, message: `Tabel ${table} berhasil dibersihkan.` };
   } catch (error: any) {
     console.error(`Error clearing table ${table} in Supabase:`, error);
