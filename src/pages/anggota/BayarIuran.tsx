@@ -71,7 +71,7 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
   }
 
   // Get dues for the target member
-  const memberDues = duesRecords.filter(d => d.memberId === currentMember.id);
+  const memberDues = duesRecords.filter(d => d.memberId === currentMember.id || (currentMember.nap && d.memberId === currentMember.nap));
 
   // Toggle month selection
   const handleToggleMonth = (year: number, month: number) => {

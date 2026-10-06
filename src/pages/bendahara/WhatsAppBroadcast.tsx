@@ -44,7 +44,7 @@ export const WhatsAppBroadcast: React.FC = () => {
   const arrearsTargets = members
     .filter(m => m.status === 'aktif')
     .map(m => {
-      const records = duesRecords.filter(d => d.memberId === m.id && d.year <= 2026 && d.status === 'unpaid');
+      const records = duesRecords.filter(d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year <= 2026 && d.status === 'unpaid');
       const arrearsAmount = records.length * settings.monthlyFee;
       return {
         member: m,

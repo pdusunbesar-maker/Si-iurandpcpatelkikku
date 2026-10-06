@@ -45,7 +45,7 @@ export const RekapKasAnggota: React.FC<RekapKasAnggotaProps> = ({ onNavigate }) 
 
   // Calculate my personal dues paid contribution
   const myPaidDuesTotal = duesRecords
-    .filter(d => d.memberId === currentMember?.id && d.status === 'paid')
+    .filter(d => (d.memberId === currentMember?.id || (currentMember?.nap && d.memberId === currentMember?.nap)) && d.status === 'paid')
     .reduce((sum, d) => sum + d.amount, 0);
 
   // Overall cash balance

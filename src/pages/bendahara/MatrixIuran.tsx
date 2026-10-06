@@ -53,7 +53,7 @@ export const MatrixIuran: React.FC = () => {
     const matchInstansi = instansiFilter === 'semua' || m.instansi === instansiFilter;
 
     // Check dues status for member in selectedYear
-    const memberDues = duesRecords.filter(d => d.memberId === m.id && d.year === selectedYear);
+    const memberDues = duesRecords.filter(d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear);
     const paidCount = memberDues.filter(d => d.status === 'paid').length;
     const hasPending = memberDues.some(d => d.status === 'pending');
     const hasUnpaid = memberDues.some(d => d.status === 'unpaid');
@@ -85,7 +85,7 @@ export const MatrixIuran: React.FC = () => {
       let memberTotalPaid = 0;
       for (let month = 1; month <= 12; month++) {
         const record = duesRecords.find(
-          d => d.memberId === m.id && d.year === selectedYear && d.month === month
+          d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear && d.month === month
         );
         const status = record?.status || 'unpaid';
         row[MONTH_SHORT[month - 1]] =
