@@ -16,14 +16,16 @@ import {
   Receipt,
   Wallet,
   Users,
+  Menu,
 } from 'lucide-react';
 
 interface NavbarProps {
   onNavigate: (page: string) => void;
   currentPage: string;
+  onToggleMobileMenu?: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage, onToggleMobileMenu }) => {
   const {
     currentUserRole,
     currentMember,
@@ -61,27 +63,40 @@ export const Navbar: React.FC<NavbarProps> = ({ onNavigate, currentPage }) => {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs w-full">
+        <div className="w-full px-3 sm:px-6 lg:px-8 xl:px-10">
           <div className="flex items-center justify-between h-16 sm:h-20">
             {/* Brand Logo & Name */}
-            <div
-              className="flex items-center gap-3.5 cursor-pointer group"
-              onClick={() => onNavigate(currentUserRole === 'bendahara' ? 'dashboard' : 'dashboard-anggota')}
-            >
-              <PatelkiLogo className="w-10 h-10 sm:w-12 sm:h-12 transition-transform duration-300 group-hover:scale-105" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-base sm:text-lg tracking-tight text-emerald-900 leading-none">
-                    SI-IURAN <span className="text-amber-500">PATELKI</span>
-                  </span>
-                  <span className="hidden md:inline-block px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
-                    DPC Kayong Utara
-                  </span>
+            <div className="flex items-center gap-2.5 sm:gap-3.5">
+              {onToggleMobileMenu && (
+                <button
+                  type="button"
+                  onClick={onToggleMobileMenu}
+                  className="lg:hidden p-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer border border-slate-200"
+                  aria-label="Buka Menu Sidebar"
+                >
+                  <Menu className="w-5 h-5 text-emerald-800" />
+                </button>
+              )}
+
+              <div
+                className="flex items-center gap-2.5 sm:gap-3.5 cursor-pointer group"
+                onClick={() => onNavigate(currentUserRole === 'bendahara' ? 'dashboard' : 'dashboard-anggota')}
+              >
+                <PatelkiLogo className="w-9 h-9 sm:w-11 sm:h-11 transition-transform duration-300 group-hover:scale-105 shrink-0" />
+                <div>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <span className="font-extrabold text-sm sm:text-lg tracking-tight text-emerald-900 leading-none">
+                      SI-IURAN <span className="text-amber-500">PATELKI</span>
+                    </span>
+                    <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      DPC Kayong Utara
+                    </span>
+                  </div>
+                  <p className="text-[10px] sm:text-xs text-slate-600 font-medium tracking-wide hidden md:block">
+                    Sistem Informasi Iuran & Keuangan Organisasi Profesi ATLM
+                  </p>
                 </div>
-                <p className="text-[11px] sm:text-xs text-slate-700 font-semibold tracking-wide hidden xs:block">
-                  Sistem Informasi Iuran & Keuangan Organisasi Profesi ATLM
-                </p>
               </div>
             </div>
 

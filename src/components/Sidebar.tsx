@@ -24,6 +24,7 @@ import {
   Building2,
   Sliders,
   LogOut,
+  X,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -61,11 +62,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed lg:sticky top-16 sm:top-20 z-40 h-[calc(100vh-4rem)] sm:h-[calc(100vh-5rem)] w-64 sm:w-72 bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar flex flex-col justify-between transition-transform duration-300 ${
+        className={`fixed lg:sticky top-0 lg:top-20 z-50 lg:z-30 h-[100dvh] lg:h-[calc(100dvh-5rem)] w-72 sm:w-80 lg:w-64 xl:w-72 bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar flex flex-col justify-between transition-transform duration-300 shadow-2xl lg:shadow-none ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="p-4 space-y-6">
+        <div className="p-4 space-y-5">
+          {/* Mobile Drawer Header with Close Button */}
+          <div className="flex lg:hidden items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <span className="font-black text-sm text-slate-900">Menu Navigasi</span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded-md uppercase">
+                {currentUserRole}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              aria-label="Tutup Menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
           {/* Bendahara Navigation */}
           {currentUserRole === 'bendahara' ? (
             <div className="space-y-5">

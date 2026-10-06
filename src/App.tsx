@@ -113,22 +113,15 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Navbar onNavigate={handleNavigate} currentPage={currentPage} />
+    <div className="w-full min-h-[100dvh] bg-slate-50 flex flex-col font-sans overflow-x-hidden">
+      <Navbar
+        onNavigate={handleNavigate}
+        currentPage={currentPage}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      />
 
-      {/* Mobile Floating Toggle Button */}
-      <div className="lg:hidden fixed bottom-5 right-5 z-40">
-        <button
-          type="button"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl shadow-2xl flex items-center gap-2 border border-amber-300 active:scale-95 transition-all"
-        >
-          <Menu className="w-5 h-5" />
-          <span className="text-xs">Menu Navigasi</span>
-        </button>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex-1 flex">
+      {/* Main Full-Screen Body Container */}
+      <div className="w-full flex-1 flex flex-col lg:flex-row min-w-0">
         {/* Sidebar */}
         <Sidebar
           currentPage={currentPage}
@@ -137,10 +130,22 @@ const MainContent: React.FC = () => {
           onCloseMobile={() => setIsMobileMenuOpen(false)}
         />
 
-        {/* Page Content Viewport */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+        {/* Page Content Viewport - Full Width Expansion */}
+        <main className="flex-1 p-3.5 sm:p-6 lg:p-8 xl:p-10 min-w-0 w-full overflow-x-hidden">
           {renderCurrentPage()}
         </main>
+      </div>
+
+      {/* Mobile Floating Menu Button (Secondary Trigger) */}
+      <div className="lg:hidden fixed bottom-4 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl shadow-xl flex items-center gap-2 border border-amber-300 active:scale-95 transition-all cursor-pointer"
+        >
+          <Menu className="w-5 h-5" />
+          <span className="text-xs font-black">Menu Navigasi</span>
+        </button>
       </div>
     </div>
   );

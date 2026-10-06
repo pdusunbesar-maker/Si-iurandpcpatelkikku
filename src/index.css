@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 @layer base {
-  body {
+  html, body, #root {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 
@@ -13,7 +20,7 @@
   --color-patelki-amber-dark: #e69900;
 }
 
-/* Custom scrollbar for matrix table */
+/* Custom scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
   height: 8px;
   width: 8px;
@@ -30,16 +37,25 @@
   background: #94a3b8;
 }
 
+/* Prevent image distortion and ensure fluid responsiveness */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
 @media print {
-  /* Hide everything on page when printing except the printable receipt */
+  /* Hide everything on page when printing except the printable receipt or document */
   body * {
     visibility: hidden;
   }
   #printable-receipt,
-  #printable-receipt * {
+  #printable-receipt *,
+  #report-document,
+  #report-document * {
     visibility: visible;
   }
-  #printable-receipt {
+  #printable-receipt,
+  #report-document {
     position: fixed;
     left: 0;
     top: 0;
