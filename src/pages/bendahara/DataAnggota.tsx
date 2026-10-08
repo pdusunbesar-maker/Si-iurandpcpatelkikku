@@ -53,6 +53,8 @@ export const DataAnggota: React.FC = () => {
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [viewingMember, setViewingMember] = useState<Member | null>(null);
   const [arrearsModalMember, setArrearsModalMember] = useState<Member | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<Member | null>(null);
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
   const [passwordModalMember, setPasswordModalMember] = useState<Member | null>(null);
   const [targetMemberPassword, setTargetMemberPassword] = useState('');
   const [passwordSavedToast, setPasswordSavedToast] = useState(false);
@@ -500,12 +502,8 @@ export const DataAnggota: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => {
-                              if (window.confirm(`Hapus anggota ${m.nama}?`)) {
-                                deleteMember(m.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            onClick={() => setMemberToDelete(m)}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                             title="Hapus Anggota"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -983,6 +981,53 @@ export const DataAnggota: React.FC = () => {
           isOpen={true}
           onClose={() => setArrearsModalMember(null)}
         />
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      {memberToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Anggota Organisasi?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus anggota <span className="font-bold text-slate-800">"{memberToDelete.nama}"</span> ({memberToDelete.nap}) beserta seluruh catatan iuran terkait secara permanen dari database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingMember}
+                onClick={() => setMemberToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingMember}
+                onClick={async () => {
+                  setIsDeletingMember(true);
+                  try {
+                    await deleteMember(memberToDelete.id);
+                    setMemberToDelete(null);
+                  } finally {
+                    setIsDeletingMember(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingMember ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

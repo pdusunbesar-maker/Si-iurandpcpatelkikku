@@ -20,6 +20,8 @@ export const Donasi: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [donationToDelete, setDonationToDelete] = useState<Donation | null>(null);
+  const [isDeletingDonation, setIsDeletingDonation] = useState(false);
   const [newDonation, setNewDonation] = useState<Omit<Donation, 'id' | 'createdAt'>>({
     date: new Date().toISOString().split('T')[0],
     donorName: '',
@@ -232,12 +234,8 @@ export const Donasi: React.FC = () => {
                     <td className="py-3.5 px-3 text-center no-print">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm(`Hapus donasi dari ${d.donorName}?`)) {
-                            deleteDonation(d.id);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
+                        onClick={() => setDonationToDelete(d)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer transition-colors"
                         title="Hapus Donasi"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -352,6 +350,53 @@ export const Donasi: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      {donationToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Catatan Donasi?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus donasi dari <span className="font-bold text-slate-800">"{donationToDelete.donorName}"</span> ({formatCurrency(donationToDelete.amount)}) secara permanen dari sistem, buku kas, dan database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingDonation}
+                onClick={() => setDonationToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingDonation}
+                onClick={async () => {
+                  setIsDeletingDonation(true);
+                  try {
+                    await deleteDonation(donationToDelete.id);
+                    setDonationToDelete(null);
+                  } finally {
+                    setIsDeletingDonation(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingDonation ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
           </div>
         </div>
       )}

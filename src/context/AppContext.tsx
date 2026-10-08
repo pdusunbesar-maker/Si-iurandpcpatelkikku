@@ -201,19 +201,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  // Helper to identify old hardcoded demo/seed IDs (e.g. tx-1, don-1, sos-1, mem-1)
+  const isDemoId = (id?: string | null) => !!id && /^(tx|don|sos|baksos|mem|sub)-[0-9]{1,3}$/.test(id);
+
   const [transactions, setTransactions] = useState<CashTransaction[]>(() => {
     const saved = localStorage.getItem('patelki_transactions');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed: CashTransaction[] = JSON.parse(saved);
+      return parsed.filter(t => !isDemoId(t.id));
+    } catch {
+      return [];
+    }
   });
 
   const [donations, setDonations] = useState<Donation[]>(() => {
     const saved = localStorage.getItem('patelki_donations');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed: Donation[] = JSON.parse(saved);
+      return parsed.filter(d => !isDemoId(d.id));
+    } catch {
+      return [];
+    }
   });
 
   const [socialServices, setSocialServices] = useState<SocialService[]>(() => {
     const saved = localStorage.getItem('patelki_social');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed: SocialService[] = JSON.parse(saved);
+      return parsed.filter(s => !isDemoId(s.id));
+    } catch {
+      return [];
+    }
   });
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
@@ -242,14 +263,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isSupabaseConfigured()) {
       pullAllDataFromSupabase().then((res) => {
         if (res.success && res.data) {
-          setMembers(res.data.members || []);
+          const cleanMembers = (res.data.members || []).filter(m => !isDemoId(m.id));
+          const cleanTransactions = (res.data.transactions || []).filter(t => !isDemoId(t.id));
+          const cleanDonations = (res.data.donations || []).filter(d => !isDemoId(d.id));
+          const cleanSocial = (res.data.socialServices || []).filter(s => !isDemoId(s.id));
+
+          setMembers(cleanMembers);
           setDuesRecords(res.data.duesRecords || []);
           setPaymentSubmissions(res.data.paymentSubmissions || []);
-          setTransactions(res.data.transactions || []);
-          setDonations(res.data.donations || []);
-          setSocialServices(res.data.socialServices || []);
+          setTransactions(cleanTransactions);
+          setDonations(cleanDonations);
+          setSocialServices(cleanSocial);
           setBankAccounts(res.data.bankAccounts || []);
           if (res.data.settings) setSettings(res.data.settings);
+
+          // Clean any detected residual demo rows from Supabase permanently
+          const demoTx = (res.data.transactions || []).filter(t => isDemoId(t.id));
+          for (const d of demoTx) {
+            deleteFromSupabase('cash_transactions', 'id', d.id).catch(() => {});
+          }
+          const demoDon = (res.data.donations || []).filter(d => isDemoId(d.id));
+          for (const d of demoDon) {
+            deleteFromSupabase('donations', 'id', d.id).catch(() => {});
+          }
+          const demoSoc = (res.data.socialServices || []).filter(s => isDemoId(s.id));
+          for (const s of demoSoc) {
+            deleteFromSupabase('social_services', 'id', s.id).catch(() => {});
+          }
 
           setIsSupabaseActive(true);
         }
@@ -270,12 +310,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = subscribeToSupabaseRealtime(() => {
       pullAllDataFromSupabase().then(res => {
         if (res.success && res.data) {
-          setMembers(res.data.members || []);
+          const cleanMembers = (res.data.members || []).filter(m => !isDemoId(m.id));
+          const cleanTransactions = (res.data.transactions || []).filter(t => !isDemoId(t.id));
+          const cleanDonations = (res.data.donations || []).filter(d => !isDemoId(d.id));
+          const cleanSocial = (res.data.socialServices || []).filter(s => !isDemoId(s.id));
+
+          setMembers(cleanMembers);
           setDuesRecords(res.data.duesRecords || []);
           setPaymentSubmissions(res.data.paymentSubmissions || []);
-          setTransactions(res.data.transactions || []);
-          setDonations(res.data.donations || []);
-          setSocialServices(res.data.socialServices || []);
+          setTransactions(cleanTransactions);
+          setDonations(cleanDonations);
+          setSocialServices(cleanSocial);
           if (res.data.bankAccounts !== undefined) {
             setBankAccounts(res.data.bankAccounts);
           }
@@ -1356,15 +1401,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions(nextTransactions);
     localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
 
-    // Delete transaction from Supabase
-    deleteFromSupabase('cash_transactions', 'id', id).catch(console.error);
+    // Delete transaction from Supabase immediately & await
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      await deleteFromSupabase('cash_transactions', 'id', id).catch(console.error);
+    }
 
     // If it's a payment related transaction, reset dues and submission
     if (txToDelete && txToDelete.relatedPaymentId) {
       const subId = txToDelete.relatedPaymentId;
-      // Reset submission
-      deleteFromSupabase('payment_submissions', 'id', subId).catch(console.error);
       setPaymentSubmissions(prev => prev.filter(s => s.id !== subId));
+      if (isSupabaseActive || isSupabaseConfigured()) {
+        await deleteFromSupabase('payment_submissions', 'id', subId).catch(console.error);
+      }
       
       // Reset dues records for this submission
       const sub = paymentSubmissions.find(s => s.id === subId);
@@ -1383,17 +1431,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    if (isSupabaseActive) {
-      await pushAllDataToSupabase({
-        members,
-        duesRecords,
-        paymentSubmissions,
-        transactions: nextTransactions,
-        donations,
-        socialServices,
-        bankAccounts,
-        settings,
-      }).catch(console.warn);
+    // If it was linked to a donation, also remove that donation so data is in sync
+    if (txToDelete && (txToDelete.relatedDonationId || txToDelete.category.toLowerCase().includes('donasi'))) {
+      const targetDon = donations.find(d => 
+        d.id === txToDelete.relatedDonationId || 
+        (d.donorName === txToDelete.sourceOrRecipient && d.amount === txToDelete.amount)
+      );
+      if (targetDon) {
+        const nextDonations = donations.filter(d => d.id !== targetDon.id);
+        setDonations(nextDonations);
+        localStorage.setItem('patelki_donations', JSON.stringify(nextDonations));
+        if (isSupabaseActive || isSupabaseConfigured()) {
+          await deleteFromSupabase('donations', 'id', targetDon.id).catch(console.error);
+        }
+      }
     }
   };
 
@@ -1409,7 +1460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDonations(nextDonations);
     localStorage.setItem('patelki_donations', JSON.stringify(nextDonations));
 
-    // Automatically record as income in Cashbook
+    // Automatically record as income in Cashbook with relatedDonationId
     addTransaction({
       date: don.date,
       type: 'income',
@@ -1418,27 +1469,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amount: don.amount,
       description: `Donasi: ${don.purpose} - ${don.description}`,
       proofUrl: don.proofUrl,
+      relatedDonationId: newId,
     });
   };
 
   const deleteDonation = async (id: string) => {
+    const targetDon = donations.find(d => d.id === id);
     const nextDonations = donations.filter(d => d.id !== id);
     setDonations(nextDonations);
     localStorage.setItem('patelki_donations', JSON.stringify(nextDonations));
 
-    deleteFromSupabase('donations', 'id', id).catch(console.error);
+    // Also remove any linked transaction in Cashbook!
+    const linkedTxList = transactions.filter(t => 
+      t.relatedDonationId === id ||
+      (targetDon && t.category.toLowerCase().includes('donasi') && t.sourceOrRecipient === targetDon.donorName)
+    );
+    const linkedTxIds = linkedTxList.map(t => t.id);
+    const nextTransactions = transactions.filter(t => !linkedTxIds.includes(t.id));
+    setTransactions(nextTransactions);
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
 
-    if (isSupabaseActive) {
-      await pushAllDataToSupabase({
-        members,
-        duesRecords,
-        paymentSubmissions,
-        transactions,
-        donations: nextDonations,
-        socialServices,
-        bankAccounts,
-        settings,
-      }).catch(console.warn);
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      await deleteFromSupabase('donations', 'id', id).catch(console.error);
+      for (const txId of linkedTxIds) {
+        await deleteFromSupabase('cash_transactions', 'id', txId).catch(console.error);
+      }
     }
   };
 
@@ -1516,7 +1571,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteSocialService = async (id: string) => {
     const targetSoc = socialServices.find(s => s.id === id);
 
-    // 1. Compute new filtered arrays explicitly to avoid React closure stale state
     const nextSocialServices = socialServices.filter(s => s.id !== id);
 
     const linkedTxIds = transactions
@@ -1529,36 +1583,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nextTransactions = transactions.filter(t => !linkedTxIds.includes(t.id));
 
-    // 2. Update React State & LocalStorage immediately
     setSocialServices(nextSocialServices);
     setTransactions(nextTransactions);
 
     localStorage.setItem('patelki_social', JSON.stringify(nextSocialServices));
     localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
 
-    // 3. Delete explicitly from Supabase database tables
-    deleteFromSupabase('social_services', 'id', id).catch(console.warn);
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      await deleteFromSupabase('social_services', 'id', id).catch(console.warn);
 
-    for (const txId of linkedTxIds) {
-      deleteFromSupabase('cash_transactions', 'id', txId).catch(console.warn);
-    }
+      for (const txId of linkedTxIds) {
+        await deleteFromSupabase('cash_transactions', 'id', txId).catch(console.warn);
+      }
 
-    if (targetSoc) {
-      deleteFromSupabase('cash_transactions', 'source_or_recipient', targetSoc.title).catch(console.warn);
-    }
-
-    // 4. Sync the EXACT NEW FILTERED DATA to Supabase so it never re-appears!
-    if (isSupabaseActive) {
-      await pushAllDataToSupabase({
-        members,
-        duesRecords,
-        paymentSubmissions,
-        transactions: nextTransactions,
-        donations,
-        socialServices: nextSocialServices,
-        bankAccounts,
-        settings,
-      }).catch(console.warn);
+      if (targetSoc) {
+        await deleteFromSupabase('cash_transactions', 'source_or_recipient', targetSoc.title).catch(console.warn);
+      }
     }
   };
 
@@ -1824,25 +1864,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUserRole('bendahara');
     setCurrentMember(null);
 
-    // Clear remote supabase tables if connected
+    // Clear remote supabase tables if connected (child tables first to avoid FK constraint errors)
     if (isSupabaseConfigured() || isSupabaseActive) {
       const tables = [
-        'members',
         'dues_records',
         'payment_submissions',
         'cash_transactions',
         'donations',
         'social_services',
         'bank_accounts',
+        'members',
       ];
       for (const table of tables) {
-        await clearTableFromSupabase(table).catch(err => {
+        try {
+          await clearTableFromSupabase(table);
+        } catch (err) {
           console.warn(`Notice clearing ${table}:`, err);
-        });
+        }
       }
     }
     
-    // Force reload to apply clean state
+    // Brief delay to allow network requests to settle then reload
+    await new Promise(resolve => setTimeout(resolve, 500));
     window.location.reload();
   };
 

@@ -244,6 +244,8 @@ export const Pengaturan: React.FC = () => {
   // Bank modal state
   const [showBankModal, setShowBankModal] = useState(false);
   const [editingBank, setEditingBank] = useState<BankAccount | null>(null);
+  const [bankToDelete, setBankToDelete] = useState<BankAccount | null>(null);
+  const [isDeletingBank, setIsDeletingBank] = useState(false);
   const [bankFormData, setBankFormData] = useState<Omit<BankAccount, 'id'>>({
     bankName: 'Bank Kalbar',
     accountNumber: '',
@@ -416,12 +418,8 @@ export const Pengaturan: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`Hapus rekening ${b.bankName}?`)) {
-                        deleteBankAccount(b.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
+                    onClick={() => setBankToDelete(b)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer transition-colors"
                     title="Hapus Rekening"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1306,6 +1304,53 @@ export const Pengaturan: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Bank Delete Confirmation Modal */}
+      {bankToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Rekening Bank?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus rekening <span className="font-bold text-slate-800">"{bankToDelete.bankName} - {bankToDelete.accountNumber}"</span> (a/n {bankToDelete.accountHolder}) secara permanen dari database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingBank}
+                onClick={() => setBankToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingBank}
+                onClick={async () => {
+                  setIsDeletingBank(true);
+                  try {
+                    await deleteBankAccount(bankToDelete.id);
+                    setBankToDelete(null);
+                  } finally {
+                    setIsDeletingBank(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingBank ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
           </div>
         </div>
       )}

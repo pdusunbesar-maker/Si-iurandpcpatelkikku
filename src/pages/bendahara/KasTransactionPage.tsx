@@ -36,6 +36,8 @@ export const KasTransactionPage: React.FC<KasTransactionPageProps> = ({ type }) 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [txToDelete, setTxToDelete] = useState<CashTransaction | null>(null);
+  const [isDeletingTx, setIsDeletingTx] = useState(false);
 
   const categories = isIncome ? settings.categoriesIncome : settings.categoriesExpense;
 
@@ -268,12 +270,9 @@ export const KasTransactionPage: React.FC<KasTransactionPageProps> = ({ type }) 
                     <td className="py-3.5 px-3 text-center no-print">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (window.confirm('Hapus transaksi ini?')) {
-                            deleteTransaction(t.id);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg"
+                        onClick={() => setTxToDelete(t)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg cursor-pointer transition-colors"
+                        title="Hapus Transaksi"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -383,6 +382,53 @@ export const KasTransactionPage: React.FC<KasTransactionPageProps> = ({ type }) 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Transaksi {isIncome ? 'Pemasukan' : 'Pengeluaran'}?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus transaksi <span className="font-bold text-slate-800">"{txToDelete.description}"</span> ({formatCurrency(txToDelete.amount)}) secara permanen dari buku kas dan database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingTx}
+                onClick={() => setTxToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingTx}
+                onClick={async () => {
+                  setIsDeletingTx(true);
+                  try {
+                    await deleteTransaction(txToDelete.id);
+                    setTxToDelete(null);
+                  } finally {
+                    setIsDeletingTx(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingTx ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
           </div>
         </div>
       )}

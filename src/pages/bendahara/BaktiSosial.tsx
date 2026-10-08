@@ -45,6 +45,8 @@ export const BaktiSosial: React.FC = () => {
   const [editingSoc, setEditingSoc] = useState<SocialService | null>(null);
   const [viewingLPJ, setViewingLPJ] = useState<SocialService | null>(null);
   const [viewingProofImage, setViewingProofImage] = useState<string | null>(null);
+  const [socToDelete, setSocToDelete] = useState<SocialService | null>(null);
+  const [isDeletingSoc, setIsDeletingSoc] = useState(false);
 
   // New social service state
   const [newSoc, setNewSoc] = useState<{
@@ -498,11 +500,7 @@ export const BaktiSosial: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm(`Hapus kegiatan baksos "${soc.title}"?`)) {
-                          deleteSocialService(soc.id);
-                        }
-                      }}
+                      onClick={() => setSocToDelete(soc)}
                       className="p-2 text-slate-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition-colors cursor-pointer"
                       title="Hapus Data Baksos"
                     >
@@ -1366,6 +1364,53 @@ export const BaktiSosial: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      {socToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Kegiatan Bakti Sosial?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus kegiatan <span className="font-bold text-slate-800">"{socToDelete.title}"</span> ({socToDelete.location}) beserta seluruh nota dan pengeluaran terkait secara permanen dari database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingSoc}
+                onClick={() => setSocToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingSoc}
+                onClick={async () => {
+                  setIsDeletingSoc(true);
+                  try {
+                    await deleteSocialService(socToDelete.id);
+                    setSocToDelete(null);
+                  } finally {
+                    setIsDeletingSoc(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingSoc ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
           </div>
         </div>
       )}

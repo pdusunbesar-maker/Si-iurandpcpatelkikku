@@ -64,6 +64,7 @@ export interface CashTransaction {
   proofUrl?: string;
   relatedPaymentId?: string;
   relatedSocialId?: string; // Link to social service record if created from baksos
+  relatedDonationId?: string; // Link to donation record if created from donations
   recordedBy?: string;
   createdAt: string;
 }

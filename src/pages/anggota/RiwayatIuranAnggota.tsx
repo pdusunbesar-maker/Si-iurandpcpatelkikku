@@ -32,13 +32,13 @@ export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavi
 
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentSubmission | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [subToDelete, setSubToDelete] = useState<{ id: string; periodText: string } | null>(null);
+  const [isDeletingSub, setIsDeletingSub] = useState(false);
 
   if (!currentMember) return null;
 
-  const handleDeleteSubmission = async (id: string, periodText: string) => {
-    if (window.confirm(`Apakah Anda yakin ingin menghapus permanen kuitansi / pengajuan untuk periode "${periodText}"? Data akan dihapus dari aplikasi dan database Supabase.`)) {
-      await deletePaymentSubmission(id);
-    }
+  const handleDeleteSubmission = (id: string, periodText: string) => {
+    setSubToDelete({ id, periodText });
   };
 
   // Filter ONLY current member's submissions (Privacy protection)
@@ -380,6 +380,53 @@ export const RiwayatIuranAnggota: React.FC<RiwayatIuranAnggotaProps> = ({ onNavi
           submission={selectedReceipt}
           onClose={() => setSelectedReceipt(null)}
         />
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      {subToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-red-200 animate-in zoom-in-95 duration-150 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Hapus Pengajuan Pembayaran?
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Hapus kuitansi / pengajuan periode <span className="font-bold text-slate-800">"{subToDelete.periodText}"</span> secara permanen dari sistem dan database Supabase?
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingSub}
+                onClick={() => setSubToDelete(null)}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingSub}
+                onClick={async () => {
+                  setIsDeletingSub(true);
+                  try {
+                    await deletePaymentSubmission(subToDelete.id);
+                    setSubToDelete(null);
+                  } finally {
+                    setIsDeletingSub(false);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black rounded-xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isDeletingSub ? 'Menghapus...' : 'Ya, Hapus Sekarang'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
