@@ -8,36 +8,7 @@ export const INITIAL_MEMBERS: Member[] = [];
 /**
  * Rekening Bank Resmi DPC PATELKI Kayong Utara
  */
-export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [
-  {
-    id: 'bank-1',
-    bankName: 'Bank Kalbar',
-    accountNumber: '5021-0899-2311',
-    accountHolder: 'DPC PATELKI KAYONG UTARA',
-    isActive: true,
-    isPrimary: true,
-    notes: 'Rekening Operasional Utama DPC (Bebas Biaya Transfer Sesama Bank Kalbar)',
-  },
-  {
-    id: 'bank-2',
-    bankName: 'Bank Rakyat Indonesia (BRI)',
-    accountNumber: '0342-01-002891-53-4',
-    accountHolder: 'DPC PATELKI KAB KAYONG UTARA',
-    isActive: true,
-    isPrimary: false,
-    notes: 'Rekening Iuran Anggota & Donasi Nasional',
-  },
-  {
-    id: 'bank-3',
-    bankName: 'QRIS DPC PATELKI KKU',
-    accountNumber: 'NMID: ID1020304050607',
-    accountHolder: 'DPC PATELKI KAB KAYONG UTARA',
-    qrisUrl: 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=00020101021126590014ID.LINKAJA.WWW0118936009110020304050215ID1020304050607520458125802ID5927DPC+PATELKI+KAYONG+UTARA6008SUKADANA6304C74B',
-    isActive: true,
-    isPrimary: false,
-    notes: 'Mendukung Semua E-Wallet (GoPay, OVO, Dana, ShopeePay) & Mobile Banking',
-  }
-];
+export const INITIAL_BANK_ACCOUNTS: BankAccount[] = [];
 
 /**
  * Pengaturan Parameter & Pejabat Resmi DPC PATELKI Kayong Utara
@@ -46,16 +17,16 @@ export const INITIAL_SETTINGS: AppSettings = {
   organizationName: 'Persatuan Ahli Teknologi Laboratorium Medik Indonesia',
   branchName: 'DPC PATELKI Kabupaten Kayong Utara',
   monthlyFee: 30000,
-  initialBalance: 8500000,
+  initialBalance: 0,
   startYear: 2025,
   endYear: 2031,
-  address: 'Sekretariat DPC Patelki KKU, Jl. Bhayangkara No. 04, Sukadana, Kab. Kayong Utara, Kalimantan Barat 78852',
-  contactWa: '6281256789001',
-  contactEmail: 'dpcpatelki.kayongutara@gmail.com',
-  ketuaName: 'Kurnia Pratama, A.Md.AK',
-  ketuaNap: '61.11.012',
-  bendaharaName: 'Siti Nurhaliza, S.Tr.Kes',
-  bendaharaNap: '61.11.001',
+  address: '',
+  contactWa: '',
+  contactEmail: '',
+  ketuaName: '',
+  ketuaNap: '',
+  bendaharaName: '',
+  bendaharaNap: '',
   treasurerUsername: 'bendahara',
   treasurerPassword: 'bendahara123',
   categoriesExpense: [

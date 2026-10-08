@@ -43,7 +43,7 @@ export const KasTransactionPage: React.FC<KasTransactionPageProps> = ({ type }) 
     date: new Date().toISOString().split('T')[0],
     category: categories[0] || 'Lainnya',
     sourceOrRecipient: '',
-    amount: 100000,
+    amount: 0,
     description: '',
     proofUrl: '',
   });

@@ -124,9 +124,10 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
     id TEXT PRIMARY KEY DEFAULT 'current_settings',
     organization_name TEXT NOT NULL,
     branch_name TEXT NOT NULL,
-    monthly_fee NUMERIC DEFAULT 25000,
-    start_year INT DEFAULT 2024,
-    end_year INT DEFAULT 2026,
+    monthly_fee NUMERIC DEFAULT 30000,
+    initial_balance NUMERIC DEFAULT 0,
+    start_year INT DEFAULT 2025,
+    end_year INT DEFAULT 2031,
     address TEXT,
     contact_wa TEXT,
     contact_email TEXT,
@@ -143,6 +144,9 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
     wa_template_rejected TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migrasi aman kolom initial_balance jika tabel sudah ada sebelumnya
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS initial_balance NUMERIC DEFAULT 0;
 
 -- ==============================================================
 -- KEAMANAN & ROW LEVEL SECURITY (RLS)

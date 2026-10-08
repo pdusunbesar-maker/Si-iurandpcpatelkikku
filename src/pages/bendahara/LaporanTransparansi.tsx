@@ -44,10 +44,10 @@ export const LaporanTransparansi: React.FC = () => {
 
   // Modal for editing initial balance
   const [showEditBalanceModal, setShowEditBalanceModal] = useState(false);
-  const [tempInitialBalance, setTempInitialBalance] = useState<number>(settings.initialBalance ?? 8500000);
+  const [tempInitialBalance, setTempInitialBalance] = useState<number>(settings.initialBalance ?? 0);
 
   // Initial cash balance state derived from settings (editable)
-  const initialBalance = settings.initialBalance ?? 8500000;
+  const initialBalance = settings.initialBalance ?? 0;
 
   // Filter transactions according to selected period
   const filteredTransactions = transactions.filter(t => {

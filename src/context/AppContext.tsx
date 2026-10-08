@@ -218,13 +218,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
     const saved = localStorage.getItem('patelki_bank_accounts');
-    return saved ? JSON.parse(saved) : INITIAL_BANK_ACCOUNTS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('patelki_settings');
     const raw: AppSettings = saved ? JSON.parse(saved) : INITIAL_SETTINGS;
-    return { ...raw, contactWa: normalizePhoneNumber(raw.contactWa || '6281256789001') };
+    return { ...raw, contactWa: normalizePhoneNumber(raw.contactWa || '') };
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
@@ -237,70 +237,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSupabaseActive, setIsSupabaseActive] = useState<boolean>(isSupabaseConfigured);
   const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
 
-  // Auto load from Supabase if configured on startup with bi-directional safety & local-first status precedence
+  // Auto load from Supabase if configured on startup - Supabase is Single Source of Truth
   useEffect(() => {
     if (isSupabaseConfigured()) {
-      pullAllDataFromSupabase().then(async (res) => {
+      pullAllDataFromSupabase().then((res) => {
         if (res.success && res.data) {
-          // Merge local state with remote data (local 'approved' / 'paid' takes precedence over remote 'pending' / 'unpaid')
-          const mergedSubmissions = (() => {
-            const remoteMap = new Map((res.data.paymentSubmissions || []).map(s => [s.id, s]));
-            paymentSubmissions.forEach(localSub => {
-              const remoteSub = remoteMap.get(localSub.id);
-              if (remoteSub) {
-                if (localSub.status === 'approved' && remoteSub.status === 'pending') {
-                  remoteSub.status = 'approved';
-                }
-              } else {
-                remoteMap.set(localSub.id, localSub);
-              }
-            });
-            return Array.from(remoteMap.values());
-          })();
-
-          const mergedDues = (() => {
-            const remoteMap = new Map((res.data.duesRecords || []).map(d => [`${d.memberId}-${d.year}-${d.month}`, d]));
-            duesRecords.forEach(localD => {
-              const key = `${localD.memberId}-${localD.year}-${localD.month}`;
-              const remoteD = remoteMap.get(key);
-              if (remoteD) {
-                if (localD.status === 'paid' && remoteD.status !== 'paid') {
-                  remoteD.status = 'paid';
-                  remoteD.paymentId = localD.paymentId;
-                }
-              } else {
-                remoteMap.set(key, localD);
-              }
-            });
-            return Array.from(remoteMap.values());
-          })();
-
-          if (res.data.members && res.data.members.length > 0) setMembers(res.data.members);
-          setDuesRecords(mergedDues);
-          setPaymentSubmissions(mergedSubmissions);
-          if (res.data.transactions && res.data.transactions.length > 0) {
-            const txMap = new Map(res.data.transactions.map(t => [t.id, t]));
-            transactions.forEach(t => txMap.set(t.id, t));
-            setTransactions(Array.from(txMap.values()));
-          }
-          if (res.data.donations && res.data.donations.length > 0) setDonations(res.data.donations);
-          if (res.data.socialServices && res.data.socialServices.length > 0) setSocialServices(res.data.socialServices);
-          if (res.data.bankAccounts && res.data.bankAccounts.length > 0) setBankAccounts(res.data.bankAccounts);
+          setMembers(res.data.members || []);
+          setDuesRecords(res.data.duesRecords || []);
+          setPaymentSubmissions(res.data.paymentSubmissions || []);
+          setTransactions(res.data.transactions || []);
+          setDonations(res.data.donations || []);
+          setSocialServices(res.data.socialServices || []);
+          setBankAccounts(res.data.bankAccounts || []);
           if (res.data.settings) setSettings(res.data.settings);
 
           setIsSupabaseActive(true);
-
-          // Push authoritative merged state back to Supabase to heal remote table
-          pushAllDataToSupabase({
-            members: res.data.members || members,
-            duesRecords: mergedDues,
-            paymentSubmissions: mergedSubmissions,
-            transactions: res.data.transactions || transactions,
-            donations: res.data.donations || donations,
-            socialServices: res.data.socialServices || socialServices,
-            bankAccounts: res.data.bankAccounts || bankAccounts,
-            settings: res.data.settings || settings,
-          }).catch(console.warn);
         }
         isInitialSyncDone.current = true;
       }).catch(err => {
@@ -312,33 +263,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Real-time sync subscription across users/devices
+  // Real-time sync subscription across users/devices - Single Source of Truth
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
     const unsubscribe = subscribeToSupabaseRealtime(() => {
       pullAllDataFromSupabase().then(res => {
         if (res.success && res.data) {
-          const hasRemoteData =
-            (res.data.members && res.data.members.length > 0) ||
-            (res.data.transactions && res.data.transactions.length > 0) ||
-            (res.data.duesRecords && res.data.duesRecords.length > 0);
-
-          if (hasRemoteData) {
-            if (res.data.members) setMembers(res.data.members);
-            if (res.data.duesRecords) setDuesRecords(res.data.duesRecords);
-            if (res.data.paymentSubmissions) setPaymentSubmissions(res.data.paymentSubmissions);
-            if (res.data.transactions) setTransactions(res.data.transactions);
-            if (res.data.donations) setDonations(res.data.donations);
-            if (res.data.socialServices) setSocialServices(res.data.socialServices);
-            if (res.data.bankAccounts && res.data.bankAccounts.length > 0) {
-              setBankAccounts(res.data.bankAccounts);
-            }
-            if (res.data.settings) {
-              setSettings(res.data.settings);
-            }
-            setIsSupabaseActive(true);
+          setMembers(res.data.members || []);
+          setDuesRecords(res.data.duesRecords || []);
+          setPaymentSubmissions(res.data.paymentSubmissions || []);
+          setTransactions(res.data.transactions || []);
+          setDonations(res.data.donations || []);
+          setSocialServices(res.data.socialServices || []);
+          if (res.data.bankAccounts !== undefined) {
+            setBankAccounts(res.data.bankAccounts);
           }
+          if (res.data.settings) {
+            setSettings(res.data.settings);
+          }
+          setIsSupabaseActive(true);
         }
       }).catch(err => {
         console.warn('Realtime sync pull error:', err);
@@ -349,29 +293,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (unsubscribe) unsubscribe();
     };
   }, [isSupabaseActive]);
-
-  // Auto-sync push to Supabase on data changes (debounced & only after initial sync completed)
-  useEffect(() => {
-    if (!isInitialSyncDone.current) return;
-    if (!isSupabaseConfigured() || !supabaseConfig.autoSync) return;
-
-    const timer = setTimeout(() => {
-      pushAllDataToSupabase({
-        members,
-        duesRecords,
-        paymentSubmissions,
-        transactions,
-        donations,
-        socialServices,
-        bankAccounts,
-        settings,
-      }).catch(err => {
-        console.warn('Auto-sync upload notice:', err);
-      });
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [members, duesRecords, paymentSubmissions, transactions, donations, socialServices, bankAccounts, settings, supabaseConfig.autoSync]);
 
   // Auth & Session state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -387,11 +308,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentMember, setCurrentMember] = useState<Member | null>(() => {
     const savedId = localStorage.getItem('patelki_member_id');
     const savedMembers = localStorage.getItem('patelki_members');
-    const memberList: Member[] = savedMembers ? JSON.parse(savedMembers) : INITIAL_MEMBERS;
+    const memberList: Member[] = savedMembers ? JSON.parse(savedMembers) : [];
     if (savedId) {
-      return memberList.find(m => m.id === savedId) || memberList[0];
+      return memberList.find(m => m.id === savedId) || memberList[0] || null;
     }
-    return memberList[0];
+    return memberList[0] || null;
   });
 
   // Sync with LocalStorage
@@ -728,7 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       noWa: normalizePhoneNumber(newMemData.noWa),
       id: newId,
     };
-    setMembers(prev => [...prev, newMember]);
+    const nextMembers = [...members, newMember];
 
     // Generate dues records for new member (2025 to 2031)
     const newDues: DuesRecord[] = [];
@@ -743,7 +664,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     }
-    setDuesRecords(prev => [...prev, ...newDues]);
+    const nextDues = [...duesRecords, ...newDues];
+
+    setMembers(nextMembers);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members: nextMembers,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const updateMember = (id: string, data: Partial<Member>) => {
@@ -751,45 +691,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...data,
       ...(data.noWa !== undefined ? { noWa: normalizePhoneNumber(data.noWa) } : {}),
     };
-    setMembers(prev => prev.map(m => (m.id === id ? { ...m, ...cleanData } : m)));
+    const nextMembers = members.map(m => (m.id === id ? { ...m, ...cleanData } : m));
+    setMembers(nextMembers);
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+
     if (currentMember?.id === id) {
       setCurrentMember(prev => (prev ? { ...prev, ...cleanData } : null));
+    }
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members: nextMembers,
+        duesRecords,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
     }
   };
 
   const deleteMember = (id: string) => {
     const memberToDelete = members.find(m => m.id === id);
-    setMembers(prev => prev.filter(m => m.id !== id));
-    setDuesRecords(prev => prev.filter(d => d.memberId !== id));
-    
+    const nextMembers = members.filter(m => m.id !== id);
+    const nextDues = duesRecords.filter(d => d.memberId !== id && (!memberToDelete?.nap || d.memberId !== memberToDelete.nap));
+
+    setMembers(nextMembers);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
     // Sync permanent deletion to Supabase (including child dues_records and submissions)
     deleteMemberFromSupabase(id, memberToDelete?.nap).catch(err => {
       console.error('Gagal menghapus anggota dari Supabase:', err);
     });
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members: nextMembers,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const toggleMemberStatus = (id: string) => {
-    setMembers(prev =>
-      prev.map(m => {
-        if (m.id === id) {
-          const nextStatus = m.status === 'aktif' ? 'nonaktif' : 'aktif';
-          // update dues to inactive or unpaid
-          setDuesRecords(dues =>
-            dues.map(d => {
-              if (d.memberId === id && d.status !== 'paid') {
-                return {
-                  ...d,
-                  status: nextStatus === 'nonaktif' ? 'inactive' : 'unpaid',
-                };
-              }
-              return d;
-            })
-          );
-          return { ...m, status: nextStatus };
-        }
-        return m;
-      })
-    );
+    let nextStatus: 'aktif' | 'nonaktif' = 'aktif';
+    const nextMembers = members.map(m => {
+      if (m.id === id) {
+        nextStatus = m.status === 'aktif' ? 'nonaktif' : 'aktif';
+        return { ...m, status: nextStatus };
+      }
+      return m;
+    });
+
+    const nextDues = duesRecords.map(d => {
+      if (d.memberId === id && d.status !== 'paid') {
+        return {
+          ...d,
+          status: (nextStatus === 'nonaktif' ? 'inactive' : 'unpaid') as any,
+        };
+      }
+      return d;
+    });
+
+    setMembers(nextMembers);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members: nextMembers,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const importMembers = (importedList: Omit<Member, 'id'>[]) => {
@@ -818,8 +809,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    setMembers(prev => [...prev, ...addedMembers]);
-    setDuesRecords(prev => [...prev, ...addedDues]);
+    const nextMembers = [...members, ...addedMembers];
+    const nextDues = [...duesRecords, ...addedDues];
+
+    setMembers(nextMembers);
+    setDuesRecords(nextDues);
+
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members: nextMembers,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Dues Actions
@@ -831,21 +841,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     amount?: number
   ) => {
     const today = new Date().toISOString().split('T')[0];
-    setDuesRecords(prev => {
-      const next = prev.map(d => {
-        if (d.memberId === memberId && d.year === year && d.month === month) {
-          return {
-            ...d,
-            status,
-            amount: amount !== undefined ? amount : d.amount,
-            updatedAt: today,
-          };
-        }
-        return d;
-      });
-      localStorage.setItem('patelki_dues', JSON.stringify(next));
-      return next;
+    const nextDues = duesRecords.map(d => {
+      if ((d.memberId === memberId || (members.find(m => m.id === memberId)?.nap && d.memberId === members.find(m => m.id === memberId)?.nap)) && d.year === year && d.month === month) {
+        return {
+          ...d,
+          status,
+          amount: amount !== undefined ? amount : d.amount,
+          updatedAt: today,
+        };
+      }
+      return d;
     });
+
+    setDuesRecords(nextDues);
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const bulkUpdateDues = (
@@ -863,23 +885,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateMap.set(`${u.memberId}-${u.year}-${u.month}`, { status: u.status, amount: u.amount });
     });
 
-    setDuesRecords(prev => {
-      const next = prev.map(d => {
-        const key = `${d.memberId}-${d.year}-${d.month}`;
-        const match = updateMap.get(key);
-        if (match) {
-          return {
-            ...d,
-            status: match.status,
-            amount: match.amount !== undefined ? match.amount : d.amount,
-            updatedAt: today,
-          };
-        }
-        return d;
-      });
-      localStorage.setItem('patelki_dues', JSON.stringify(next));
-      return next;
+    const nextDues = duesRecords.map(d => {
+      const key = `${d.memberId}-${d.year}-${d.month}`;
+      const match = updateMap.get(key);
+      if (match) {
+        return {
+          ...d,
+          status: match.status,
+          amount: match.amount !== undefined ? match.amount : d.amount,
+          updatedAt: today,
+        };
+      }
+      return d;
     });
+
+    setDuesRecords(nextDues);
+    localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members,
+        duesRecords: nextDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   // Pelunasan Tunggakan Iuran Langsung oleh Bendahara (Tunai/Transfer Langsung)
@@ -1298,15 +1332,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `trx-${Date.now()}`,
       createdAt: new Date().toLocaleString('id-ID'),
     };
-    setTransactions(prev => [newTx, ...prev]);
+    const nextTransactions = [newTx, ...transactions];
+    setTransactions(nextTransactions);
+    localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
+    if (isSupabaseActive) {
+      pushAllDataToSupabase({
+        members,
+        duesRecords,
+        paymentSubmissions,
+        transactions: nextTransactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
   };
 
   const deleteTransaction = async (id: string) => {
+    const txToDelete = transactions.find(t => t.id === id);
     const nextTransactions = transactions.filter(t => t.id !== id);
     setTransactions(nextTransactions);
     localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
 
+    // Delete transaction from Supabase
     deleteFromSupabase('cash_transactions', 'id', id).catch(console.error);
+
+    // If it's a payment related transaction, reset dues and submission
+    if (txToDelete && txToDelete.relatedPaymentId) {
+      const subId = txToDelete.relatedPaymentId;
+      // Reset submission
+      deleteFromSupabase('payment_submissions', 'id', subId).catch(console.error);
+      setPaymentSubmissions(prev => prev.filter(s => s.id !== subId));
+      
+      // Reset dues records for this submission
+      const sub = paymentSubmissions.find(s => s.id === subId);
+      if (sub) {
+        const nextDues = duesRecords.map(d => {
+          if (
+            (d.memberId === sub.memberId || d.memberId === sub.memberNap) &&
+            sub.months.some(m => m.year === d.year && m.month === d.month)
+          ) {
+            return { ...d, status: 'unpaid' as const, paymentId: undefined };
+          }
+          return d;
+        });
+        setDuesRecords(nextDues);
+        localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+      }
+    }
 
     if (isSupabaseActive) {
       await pushAllDataToSupabase({
@@ -1726,16 +1801,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetAllDataToDefault = async () => {
-    // Clear all patelki keys from localStorage
+    // Clear all business data keys from localStorage (preserving Supabase credentials)
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('patelki_')) {
+      if (key && key.startsWith('patelki_') && !key.includes('supabase')) {
         keysToRemove.push(key);
       }
     }
     keysToRemove.forEach(k => localStorage.removeItem(k));
-    localStorage.setItem('patelki_demo_purged_v6', 'true');
+    localStorage.setItem('patelki_demo_purged_v7', 'true');
 
     setMembers([]);
     setDuesRecords([]);
@@ -1743,7 +1818,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions([]);
     setDonations([]);
     setSocialServices([]);
-    setBankAccounts(INITIAL_BANK_ACCOUNTS);
+    setBankAccounts([]);
     setSettings(INITIAL_SETTINGS);
     setNotifications([]);
     setCurrentUserRole('bendahara');
@@ -1758,6 +1833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'cash_transactions',
         'donations',
         'social_services',
+        'bank_accounts',
       ];
       for (const table of tables) {
         await clearTableFromSupabase(table).catch(err => {

@@ -180,8 +180,8 @@ export const Pengaturan: React.FC = () => {
   };
 
   // Treasurer password change state
-  const [treasurerName, setTreasurerName] = useState(settings.bendaharaName || treasurerMember?.nama || 'Siti Nurhaliza');
-  const [treasurerNap, setTreasurerNap] = useState(settings.bendaharaNap || treasurerMember?.nap || '61.11.001');
+  const [treasurerName, setTreasurerName] = useState(settings.bendaharaName || treasurerMember?.nama || '');
+  const [treasurerNap, setTreasurerNap] = useState(settings.bendaharaNap || treasurerMember?.nap || '');
   const [treasurerUser, setTreasurerUser] = useState(settings.treasurerUsername || 'bendahara');
   const [treasurerPass, setTreasurerPass] = useState(settings.treasurerPassword || 'bendahara123');
   const [showTreasurerPass, setShowTreasurerPass] = useState(false);

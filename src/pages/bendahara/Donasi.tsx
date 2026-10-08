@@ -24,7 +24,7 @@ export const Donasi: React.FC = () => {
     date: new Date().toISOString().split('T')[0],
     donorName: '',
     donorContact: '',
-    amount: 500000,
+    amount: 0,
     type: 'uang',
     purpose: 'Kas Operasional & Bakti Sosial',
     description: '',

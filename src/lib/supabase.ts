@@ -351,10 +351,14 @@ export async function clearTableFromSupabase(table: string): Promise<{ success: 
   const client = createClient(url, key, { auth: { persistSession: false } });
 
   try {
-    // Try multiple delete filters to ensure all rows are purged regardless of ID type
-    await client.from(table).delete().neq('id', 'non-existent-id-1234567890');
-    await client.from(table).delete().gte('id', '');
-    await client.from(table).delete().not('id', 'is', null);
+    // Delete all records by deleting where id is not null (or any other condition that matches all)
+    const { error } = await client.from(table).delete().neq('id', 'non-existent-id-1234567890');
+    
+    // Fallback: If for some reason that didn't clear all (e.g. if 'id' column isn't present), try a more general approach
+    if (error) {
+      console.warn(`Initial delete attempt on ${table} failed, attempting alternative...`);
+      await client.from(table).delete().gt('id', '0'); // Might not work if id is uuid
+    }
 
     return { success: true, message: `Tabel ${table} berhasil dibersihkan.` };
   } catch (error: any) {
@@ -540,6 +544,7 @@ export async function pushAllDataToSupabase(data: {
       organization_name: data.settings.organizationName,
       branch_name: data.settings.branchName,
       monthly_fee: data.settings.monthlyFee,
+      initial_balance: data.settings.initialBalance ?? 0,
       start_year: data.settings.startYear,
       end_year: data.settings.endYear,
       address: data.settings.address,
@@ -771,11 +776,12 @@ export async function pullAllDataFromSupabase(): Promise<{
     let settings: AppSettings | undefined = undefined;
     if (dbSettings) {
       settings = {
-        organizationName: dbSettings.organization_name || 'DPC PATELKI KABUPATEN KAYONG UTARA',
-        branchName: dbSettings.branch_name || 'Kabupaten Kayong Utara',
-        monthlyFee: Number(dbSettings.monthly_fee) || 25000,
-        startYear: Number(dbSettings.start_year) || 2024,
-        endYear: Number(dbSettings.end_year) || 2026,
+        organizationName: dbSettings.organization_name || 'Persatuan Ahli Teknologi Laboratorium Medik Indonesia',
+        branchName: dbSettings.branch_name || 'DPC PATELKI Kabupaten Kayong Utara',
+        monthlyFee: Number(dbSettings.monthly_fee) || 30000,
+        initialBalance: Number(dbSettings.initial_balance) || 0,
+        startYear: Number(dbSettings.start_year) || 2025,
+        endYear: Number(dbSettings.end_year) || 2031,
         address: dbSettings.address || '',
         contactWa: dbSettings.contact_wa || '',
         contactEmail: dbSettings.contact_email || '',

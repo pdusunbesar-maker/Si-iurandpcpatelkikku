@@ -62,22 +62,15 @@ export const BaktiSosial: React.FC = () => {
   }>({
     title: '',
     date: new Date().toISOString().split('T')[0],
-    location: 'Sukadana, Kab. Kayong Utara',
-    picName: settings.ketuaName || 'Panitia Baksos DPC PATELKI KKU',
-    fundSource: 'Kas DPC PATELKI KKU & Donasi Mitra',
-    totalBudget: 3500000,
-    beneficiaries: '150 Warga Masyarakat & Lansia',
-    description: 'Pemeriksaan Kesehatan & Skrining Laboratorium Medis (Gula Darah, Kolesterol, Asam Urat) Gratis serta Edukasi Kesehatan ATLM.',
-    lpjNotes: 'Kegiatan berjalan lancar, tertib, dan mendapatkan apresiasi tinggi dari perangkat desa dan warga setempat.',
-    documentationUrls: [
-      'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=800',
-      'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=800',
-    ],
-    expenses: [
-      { id: 'exp-1', item: 'Strip Tes Lab & Reagen BHP Medis', amount: 2000000, notes: 'Nota Medis Apotek Sehat', proofUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&q=80&w=600' },
-      { id: 'exp-2', item: 'Transport & Logistik Relawan ATLM', amount: 800000, notes: 'BBM & Sewa Kendaraan', proofUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&q=80&w=600' },
-      { id: 'exp-3', item: 'Konsumsi & Snack Warga/Panitia', amount: 700000, notes: 'Katering Ibu Desa', proofUrl: '' },
-    ],
+    location: '',
+    picName: '',
+    fundSource: 'Kas DPC & Donasi',
+    totalBudget: 0,
+    beneficiaries: '',
+    description: '',
+    lpjNotes: '',
+    documentationUrls: [],
+    expenses: [],
   });
 
   // State for dynamic item expense in modal form
