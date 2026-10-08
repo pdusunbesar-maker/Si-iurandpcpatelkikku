@@ -35,6 +35,7 @@ import {
   deleteMemberFromSupabase,
   clearTableFromSupabase,
   upsertToSupabase,
+  updateInSupabase,
 } from '../lib/supabase';
 import {
   normalizePhoneNumber,
@@ -277,6 +278,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setBankAccounts(res.data.bankAccounts || []);
           if (res.data.settings) setSettings(res.data.settings);
 
+          // Synchronize logged in member with latest Supabase record
+          const savedMemberId = localStorage.getItem('patelki_member_id');
+          if (savedMemberId) {
+            const fresh = cleanMembers.find(m => m.id === savedMemberId);
+            if (fresh) {
+              setCurrentMember(fresh);
+            }
+          }
+
           // Clean any detected residual demo rows from Supabase permanently
           const demoTx = (res.data.transactions || []).filter(t => isDemoId(t.id));
           for (const d of demoTx) {
@@ -327,6 +337,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (res.data.settings) {
             setSettings(res.data.settings);
           }
+
+          // Synchronize logged in member with latest Supabase record
+          const savedMemberId = localStorage.getItem('patelki_member_id');
+          if (savedMemberId) {
+            const fresh = cleanMembers.find(m => m.id === savedMemberId);
+            if (fresh) {
+              setCurrentMember(fresh);
+            }
+          }
           setIsSupabaseActive(true);
         }
       }).catch(err => {
@@ -351,13 +370,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentMember, setCurrentMember] = useState<Member | null>(() => {
+    const savedAuth = localStorage.getItem('patelki_auth') === 'true';
+    const savedRole = localStorage.getItem('patelki_role');
     const savedId = localStorage.getItem('patelki_member_id');
+    if (!savedAuth || savedRole !== 'anggota' || !savedId) return null;
     const savedMembers = localStorage.getItem('patelki_members');
-    const memberList: Member[] = savedMembers ? JSON.parse(savedMembers) : [];
-    if (savedId) {
-      return memberList.find(m => m.id === savedId) || memberList[0] || null;
+    if (!savedMembers) return null;
+    try {
+      const memberList: Member[] = JSON.parse(savedMembers);
+      return memberList.find(m => m.id === savedId) || null;
+    } catch {
+      return null;
     }
-    return memberList[0] || null;
   });
 
   // Sync with LocalStorage
@@ -372,6 +396,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (currentMember) {
       localStorage.setItem('patelki_member_id', currentMember.id);
+    } else {
+      localStorage.removeItem('patelki_member_id');
     }
   }, [currentMember]);
 
@@ -536,6 +562,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUserRole('bendahara');
       setCurrentMember(bendahara);
       setIsAuthenticated(true);
+      localStorage.setItem('patelki_auth', 'true');
+      localStorage.setItem('patelki_role', 'bendahara');
       return { success: true };
     } else {
       // 1. Prepare member list from state or LocalStorage
@@ -551,52 +579,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Helper function for flexible multi-credential matching (NAP, Name, WhatsApp, Email, NIK, ID)
-      const findMemberInList = (list: Member[]): Member | undefined => {
-        return list.find(m => {
-          if (!m) return false;
+      // Prioritized & strict member resolver to eliminate false matching (Si A vs Si B)
+      const resolveMember = (list: Member[]): Member | undefined => {
+        if (!list || list.length === 0) return undefined;
 
-          // Match by NAP
-          const mNapClean = (m.nap || '').toLowerCase().trim();
-          const mNapDigits = mNapClean.replace(/[^a-z0-9]/gi, '');
-          const cleanIdAlphaNum = cleanId.replace(/[^a-z0-9]/gi, '');
-
-          const matchNap =
-            mNapClean === cleanId ||
-            (cleanIdAlphaNum.length > 0 && mNapDigits === cleanIdAlphaNum) ||
-            (cleanId.length >= 3 && mNapClean.includes(cleanId)) ||
-            (mNapClean.length >= 3 && cleanId.includes(mNapClean));
-
-          // Match by Name
-          const mNamaClean = (m.nama || '').toLowerCase().trim();
-          const matchNama =
-            mNamaClean === cleanId ||
-            (cleanId.length >= 3 && mNamaClean.includes(cleanId)) ||
-            (mNamaClean.length >= 3 && cleanId.includes(mNamaClean));
-
-          // Match by WhatsApp / Phone number
-          const mPhoneDigits = (m.noWa || '').replace(/[^0-9]/g, '');
-          const matchWa =
-            cleanDigits.length >= 4 &&
-            (mPhoneDigits.includes(cleanDigits) ||
-             cleanDigits.includes(mPhoneDigits) ||
-             (mPhoneDigits.length >= 7 && cleanDigits.endsWith(mPhoneDigits.slice(-7))) ||
-             (cleanDigits.length >= 7 && mPhoneDigits.endsWith(cleanDigits.slice(-7))));
-
-          // Match by Email
-          const mEmailClean = (m.email || '').toLowerCase().trim();
-          const matchEmail = mEmailClean.length > 0 && (mEmailClean === cleanId || mEmailClean.includes(cleanId));
-
-          // Match by NIK or ID
-          const mNikClean = (m.nik || '').replace(/[^0-9]/g, '');
-          const matchNik = cleanDigits.length >= 6 && mNikClean === cleanDigits;
-          const matchId = (m.id || '').toLowerCase() === cleanId;
-
-          return matchNap || matchNama || matchWa || matchEmail || matchNik || matchId;
+        // Tier 1: Exact NAP Match (Primary official identifier)
+        let target = list.find(m => {
+          const mNap = (m.nap || '').toLowerCase().trim();
+          const mNapAlpha = mNap.replace(/[^a-z0-9]/gi, '');
+          const cleanIdAlpha = cleanId.replace(/[^a-z0-9]/gi, '');
+          return mNap === cleanId || (cleanIdAlpha.length >= 4 && mNapAlpha === cleanIdAlpha);
         });
+        if (target) return target;
+
+        // Tier 2: Exact ID Match
+        target = list.find(m => (m.id || '').toLowerCase().trim() === cleanId);
+        if (target) return target;
+
+        // Tier 3: Exact Phone / WhatsApp Match (Requires at least 8 digits matching ending)
+        if (cleanDigits.length >= 8) {
+          target = list.find(m => {
+            const mPhone = (m.noWa || '').replace(/[^0-9]/g, '');
+            if (!mPhone || mPhone.length < 8) return false;
+            const targetSuffix = cleanDigits.slice(-9);
+            const mPhoneSuffix = mPhone.slice(-9);
+            return mPhone === cleanDigits || mPhoneSuffix === targetSuffix;
+          });
+          if (target) return target;
+        }
+
+        // Tier 4: Exact Email Match
+        if (cleanId.includes('@')) {
+          target = list.find(m => (m.email || '').toLowerCase().trim() === cleanId);
+          if (target) return target;
+        }
+
+        // Tier 5: Exact NIK Match (National Identity Number)
+        if (cleanDigits.length >= 10) {
+          target = list.find(m => {
+            const mNik = (m.nik || '').replace(/[^0-9]/g, '');
+            return mNik.length >= 10 && mNik === cleanDigits;
+          });
+          if (target) return target;
+        }
+
+        // Tier 6: Exact Full Name Match (Case-insensitive, ignoring honorific titles)
+        target = list.find(m => {
+          const mName = (m.nama || '').toLowerCase().trim();
+          if (mName === cleanId) return true;
+          const mNameNoTitle = mName.replace(/,\s*(a\.md|s\.tr|skm|s\.si|m\.kes|amd).*$/i, '').trim();
+          const inputNoTitle = cleanId.replace(/,\s*(a\.md|s\.tr|skm|s\.si|m\.kes|amd).*$/i, '').trim();
+          return mNameNoTitle.length >= 3 && mNameNoTitle === inputNoTitle;
+        });
+        if (target) return target;
+
+        return undefined;
       };
 
-      let matched = findMemberInList(currentMemberList);
+      let matched = resolveMember(currentMemberList);
 
       // 2. If no local match found and Supabase is configured, pull remote database in real-time
       if (!matched && isSupabaseConfigured()) {
@@ -609,7 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (res.data.donations) setDonations(res.data.donations);
             if (res.data.socialServices) setSocialServices(res.data.socialServices);
 
-            matched = findMemberInList(res.data.members);
+            matched = resolveMember(res.data.members);
           }
         } catch (err) {
           console.warn('Login Supabase pull notice:', err);
@@ -619,35 +659,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!matched) {
         return {
           success: false,
-          error: `Nomor Anggota (NAP) atau akun "${identifier}" tidak ditemukan di database DPC Patelki Kayong Utara. Silakan hubungi Bendahara untuk memastikan data anggota Anda terdaftar.`,
+          error: `Nomor Anggota (NAP) atau akun "${identifier}" tidak ditemukan di database DPC Patelki Kayong Utara. Pastikan NAP atau Nomor HP yang dimasukkan sudah sesuai dengan data yang terdaftar.`,
         };
       }
 
-      // Password check for anggota (custom member.password, default '123456', PIN, or phone digits)
+      // Password check for anggota (custom member.password, default '123456', or PIN)
       const memberPass = (matched.password || '123456').trim();
-      const matchedNapClean = (matched.nap || '').toLowerCase().replace(/[^a-z0-9]/gi, '');
-      const matchedPhoneEnd = (matched.noWa || '').replace(/[^0-9]/g, '').slice(-6);
+      const matchedPin = (matched.pin || '').trim();
 
       const isPassMatch =
-        !cleanPass || // Allow blank password
         cleanPass === memberPass ||
         cleanPass === '123456' ||
-        cleanPass === 'patelki' ||
-        cleanPass === (matched.nap || '').toLowerCase() ||
-        cleanPass.replace(/[^a-z0-9]/gi, '') === matchedNapClean ||
-        (matched.pin && cleanPass === matched.pin) ||
-        (matchedPhoneEnd.length >= 4 && cleanPass === matchedPhoneEnd);
+        (matchedPin.length > 0 && cleanPass === matchedPin);
 
       if (!isPassMatch) {
         return {
           success: false,
-          error: 'Kata sandi / PIN Anggota salah. (Kata sandi awal default: 123456)',
+          error: 'Kata sandi / PIN Anggota salah. Kata sandi default awal anggota adalah "123456". Hubungi Bendahara jika Anda lupa kata sandi.',
         };
       }
 
       setCurrentUserRole('anggota');
       setCurrentMember(matched);
       setIsAuthenticated(true);
+      localStorage.setItem('patelki_auth', 'true');
+      localStorage.setItem('patelki_role', 'anggota');
+      localStorage.setItem('patelki_member_id', matched.id);
       return { success: true };
     }
   };
@@ -665,25 +702,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // Change Member Password
-  const changeMemberPassword = (memberId: string, newPassword: string) => {
-    setMembers(prev =>
-      prev.map(m => {
-        if (m.id === memberId) {
-          return { ...m, password: newPassword.trim() };
-        }
-        return m;
-      })
-    );
+  // Change Member Password (with immediate Supabase persistence)
+  const changeMemberPassword = async (memberId: string, newPassword: string) => {
+    const cleanPass = newPassword.trim() || '123456';
+    const nextMembers = members.map(m => {
+      if (m.id === memberId) {
+        return { ...m, password: cleanPass };
+      }
+      return m;
+    });
+    setMembers(nextMembers);
+    localStorage.setItem('patelki_members', JSON.stringify(nextMembers));
+
     if (currentMember?.id === memberId) {
-      setCurrentMember(prev => (prev ? { ...prev, password: newPassword.trim() } : null));
+      setCurrentMember(prev => (prev ? { ...prev, password: cleanPass } : null));
+    }
+
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      await updateInSupabase('members', { password: cleanPass }, 'id', memberId).catch(console.error);
     }
   };
 
   // Logout handler
   const logout = () => {
     setIsAuthenticated(false);
+    setCurrentMember(null);
+    setCurrentUserRole('bendahara');
     localStorage.removeItem('patelki_auth');
+    localStorage.removeItem('patelki_member_id');
+    localStorage.removeItem('patelki_role');
   };
 
   // Member actions
@@ -693,6 +740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...newMemData,
       noWa: normalizePhoneNumber(newMemData.noWa),
       id: newId,
+      password: newMemData.password || '123456',
     };
     const nextMembers = [...members, newMember];
 
@@ -731,7 +779,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const updateMember = (id: string, data: Partial<Member>) => {
+  const updateMember = async (id: string, data: Partial<Member>) => {
     const cleanData = {
       ...data,
       ...(data.noWa !== undefined ? { noWa: normalizePhoneNumber(data.noWa) } : {}),
@@ -744,17 +792,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentMember(prev => (prev ? { ...prev, ...cleanData } : null));
     }
 
-    if (isSupabaseActive) {
-      pushAllDataToSupabase({
-        members: nextMembers,
-        duesRecords,
-        paymentSubmissions,
-        transactions,
-        donations,
-        socialServices,
-        bankAccounts,
-        settings,
-      }).catch(console.warn);
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      const dbUpdatePayload: Record<string, any> = {};
+      if (cleanData.nama !== undefined) dbUpdatePayload.nama = cleanData.nama;
+      if (cleanData.gelar !== undefined) dbUpdatePayload.gelar = cleanData.gelar;
+      if (cleanData.nap !== undefined) dbUpdatePayload.nap = cleanData.nap;
+      if (cleanData.noWa !== undefined) dbUpdatePayload.no_wa = cleanData.noWa;
+      if (cleanData.instansi !== undefined) dbUpdatePayload.instansi = cleanData.instansi;
+      if (cleanData.jabatan !== undefined) dbUpdatePayload.jabatan = cleanData.jabatan;
+      if (cleanData.status !== undefined) dbUpdatePayload.status = cleanData.status;
+      if (cleanData.foto !== undefined) dbUpdatePayload.foto = (cleanData.foto && cleanData.foto.length > 500000) ? null : cleanData.foto;
+      if (cleanData.email !== undefined) dbUpdatePayload.email = cleanData.email;
+      if (cleanData.alamat !== undefined) dbUpdatePayload.alamat = cleanData.alamat;
+      if (cleanData.nik !== undefined) dbUpdatePayload.nik = cleanData.nik;
+      if (cleanData.password !== undefined) dbUpdatePayload.password = cleanData.password;
+      if (cleanData.pin !== undefined) dbUpdatePayload.pin = cleanData.pin;
+
+      await updateInSupabase('members', dbUpdatePayload, 'id', id).catch(console.error);
     }
   };
 

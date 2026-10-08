@@ -267,6 +267,34 @@ export async function upsertToSupabase(
 }
 
 /**
+ * Memperbarui (UPDATE) kolom tertentu pada record Supabase tanpa melanggar constraint NOT NULL.
+ */
+export async function updateInSupabase(
+  table: string,
+  updates: Record<string, any>,
+  matchField: string,
+  matchValue: any
+): Promise<{ success: boolean; message: string }> {
+  const { url, key } = getSupabaseConfig();
+  if (!url || !key) {
+    return { success: false, message: 'Supabase belum dikonfigurasi!' };
+  }
+
+  const client = createClient(url, key, { auth: { persistSession: false } });
+
+  try {
+    const { error } = await client.from(table).update(updates).eq(matchField, matchValue);
+    if (error) {
+      throw new Error(`Tabel ${table}: ${error.message}`);
+    }
+    return { success: true, message: 'Data berhasil diperbarui di Supabase' };
+  } catch (error: any) {
+    console.error('Error updating Supabase:', error);
+    return { success: false, message: `Gagal memperbarui data: ${error.message}` };
+  }
+}
+
+/**
  * Menghapus record dari Supabase berdasarkan ID atau field tertentu.
  */
 export async function deleteFromSupabase(
@@ -683,7 +711,7 @@ export async function pullAllDataFromSupabase(): Promise<{
       email: m.email || undefined,
       alamat: m.alamat || undefined,
       nik: m.nik || undefined,
-      password: m.password || undefined,
+      password: m.password || '123456',
       pin: m.pin || undefined,
     }));
 
