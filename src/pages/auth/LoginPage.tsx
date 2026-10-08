@@ -6,6 +6,7 @@ import { RoleSwitcher } from '../../components/auth/RoleSwitcher';
 import { LoginForm } from '../../components/auth/LoginForm';
 import { LoginFooter } from '../../components/auth/LoginFooter';
 import { MessageCircle, X } from 'lucide-react';
+import labActivityPhoto from '../../assets/images/patelki_lab_activity_1791480354093.jpg';
 
 export const LoginPage: React.FC = () => {
   const { login, settings, generateWhatsAppLink } = useApp();
@@ -59,11 +60,22 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen w-full flex flex-col justify-between bg-gradient-to-br from-[#005B46] via-[#004D3C] to-[#003B2E] text-slate-900 relative overflow-x-hidden font-sans select-text">
       {/* ============================================================== */}
-      {/* DECORATIVE BACKGROUND SVGS & SWOOSHES (Top-Left & Bottom-Right)  */}
+      {/* RESPONSIVE LAB / MEDICAL SETTING BACKGROUND WITH SUBTLE DARK SHADOW */}
       {/* ============================================================== */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        {/* Subtle Ambient Glows */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#00664F]/30 blur-3xl" />
+        {/* Lab/Medical Setting Responsive Background Image */}
+        <img
+          src={labActivityPhoto}
+          alt="Aktivitas Laboratorium Medis dan Rumah Sakit ATLM"
+          className="w-full h-full object-cover object-center filter brightness-90 contrast-105"
+        />
+        {/* Subtle Dark Overlay (Shadow) to ensure text remains 100% readable */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#004D3C]/80 via-[#003B2E]/75 to-[#0F172A]/85" />
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="absolute inset-0 bg-radial-[at_30%_40%] from-transparent via-[#003B2E]/30 to-[#001F18]/80" />
+
+        {/* Subtle Ambient Lighting */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-[#00664F]/25 blur-3xl" />
         <div className="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full bg-emerald-500/10 blur-3xl" />
 
         {/* Top-Left Big Diagonal Swoosh: Orange & Emerald (matching mockups) */}
@@ -123,38 +135,42 @@ export const LoginPage: React.FC = () => {
             </linearGradient>
           </defs>
         </svg>
+      </div>
 
-        {/* Top-Right Decorative Calligraphy: "Bersama Membangun Profesi" */}
-        <div className="hidden lg:flex flex-col items-end absolute top-8 right-12 select-none text-right z-10 pointer-events-none">
-          <span className="text-xl xl:text-2xl font-black italic tracking-wide text-white drop-shadow-md leading-tight font-serif">
-            Bersama
+      {/* ============================================================== */}
+      {/* DECORATIVE CALLIGRAPHY: "Bersama Membangun Profesi"             */}
+      {/* Positioned absolutely with z-30 to ensure it's never covered     */}
+      {/* ============================================================== */}
+      <div className="absolute top-4 sm:top-6 lg:top-8 right-4 sm:right-6 lg:right-10 z-30 flex flex-col items-end select-none text-right pointer-events-none transition-all duration-300">
+        <span className="text-xs sm:text-base lg:text-xl xl:text-2xl font-black italic tracking-wide text-white drop-shadow-lg leading-tight">
+          Bersama
+        </span>
+        <span className="text-xs sm:text-base lg:text-xl xl:text-2xl font-black italic tracking-wide text-white drop-shadow-lg leading-tight">
+          Membangun
+        </span>
+        <div className="relative inline-block mt-0.5">
+          <span className="text-sm sm:text-xl lg:text-2xl xl:text-3xl font-black italic tracking-wide text-[#FF9F00] drop-shadow-xl">
+            Profesi
           </span>
-          <span className="text-xl xl:text-2xl font-black italic tracking-wide text-white drop-shadow-md leading-tight font-serif">
-            Membangun
-          </span>
-          <div className="relative inline-block mt-0.5">
-            <span className="text-2xl xl:text-3xl font-black italic tracking-wide text-[#FF9F00] drop-shadow-lg font-serif">
-              Profesi
-            </span>
-            {/* Curved orange brush underline */}
-            <svg
-              className="w-28 h-4 -mt-1 text-[#FF9F00]"
-              viewBox="0 0 100 15"
-              fill="currentColor"
-            >
-              <path d="M2 10 Q 50 1 98 12 Q 50 6 2 10 Z" />
-            </svg>
-          </div>
+          {/* Curved orange brush underline */}
+          <svg
+            className="w-16 sm:w-22 lg:w-28 h-2.5 sm:h-3.5 -mt-0.5 sm:-mt-1 text-[#FF9F00]"
+            viewBox="0 0 100 15"
+            fill="currentColor"
+          >
+            <path d="M2 10 Q 50 1 98 12 Q 50 6 2 10 Z" />
+          </svg>
         </div>
       </div>
 
       {/* ============================================================== */}
       {/* MAIN TWO-COLUMN CONTAINER (Centered & Balanced Layout)          */}
+      {/* Responsive top padding provides clearance for absolute text     */}
       {/* ============================================================== */}
-      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex items-center justify-center">
+      <main className="relative z-10 flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 lg:pt-16 pb-6 sm:pb-10 flex items-center justify-center">
         <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           {/* ------------------------------------------------------------ */}
-          {/* LEFT COLUMN: BRANDING & HIGHLIGHTS (5 or 6 cols on desktop)  */}
+          {/* LEFT COLUMN: BRANDING & HIGHLIGHTS (6 cols on desktop)       */}
           {/* ------------------------------------------------------------ */}
           <div className="lg:col-span-6 xl:col-span-6 flex flex-col justify-center animate-in fade-in duration-500">
             <LoginHeader />
@@ -163,10 +179,11 @@ export const LoginPage: React.FC = () => {
           {/* ------------------------------------------------------------ */}
           {/* RIGHT COLUMN: LOGIN CARD (6 cols on desktop)                 */}
           {/* ------------------------------------------------------------ */}
-          <div className="lg:col-span-6 xl:col-span-6 flex items-center justify-center lg:justify-end animate-in fade-in slide-in-from-bottom-5 duration-600">
-            <div className="w-full max-w-[620px] xl:max-w-[650px] bg-white rounded-[24px] shadow-2xl shadow-emerald-950/20 border border-white/60 p-6 sm:p-9 lg:p-10 relative overflow-hidden transition-all duration-300">
+          <div className="lg:col-span-6 xl:col-span-6 flex flex-col items-center lg:items-end justify-center w-full animate-in fade-in slide-in-from-bottom-5 duration-600">
+            {/* Login Card */}
+            <div className="w-full max-w-[620px] xl:max-w-[650px] bg-white rounded-[24px] shadow-2xl shadow-emerald-950/25 border border-white/60 p-6 sm:p-8 lg:p-9 relative overflow-hidden transition-all duration-300">
               {/* Role Switcher Tabs */}
-              <div className="mb-7">
+              <div className="mb-6 sm:mb-7">
                 <RoleSwitcher
                   activeRole={activeRole}
                   onRoleChange={handleRoleChange}

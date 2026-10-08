@@ -1,21 +1,21 @@
 import React from 'react';
 import { ShieldCheck, FileCheck, Users } from 'lucide-react';
 import { PatelkiLogo } from '../PatelkiLogo';
-import buildingPhoto from '../../assets/images/patelki_building_1791478382751.jpg';
+import labActivityPhoto from '../../assets/images/patelki_lab_activity_1791480354093.jpg';
 
 export const LoginHeader: React.FC = () => {
   return (
-    <div className="relative w-full h-full flex flex-col justify-between p-6 sm:p-10 lg:p-14 overflow-hidden z-10">
-      {/* Background Building Photo - Very subtle, dark emerald overlay for 100% readability */}
+    <div className="relative w-full h-full flex flex-col justify-between p-6 sm:p-10 lg:p-14 overflow-hidden z-10 rounded-3xl">
+      {/* Background Laboratory Activity Photo - Health/Hospital Clinical Lab Setting */}
       <div className="absolute inset-0 z-0 pointer-events-none select-none overflow-hidden">
         <img
-          src={buildingPhoto}
-          alt="Gedung Sekretariat PATELKI"
-          className="absolute -bottom-10 -left-10 w-full sm:w-[95%] max-h-[520px] object-cover object-bottom opacity-20 mix-blend-luminosity filter blur-[0.3px]"
+          src={labActivityPhoto}
+          alt="Aktivitas Laboratorium Kesehatan ATLM"
+          className="w-full h-full object-cover object-center opacity-30 filter brightness-95 contrast-105 scale-105"
         />
-        {/* Soft gradient mask ensuring text is crisp and readable */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#003B2E] via-[#004D3C]/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#004D3C]/40 via-transparent to-[#003B2E]/90" />
+        {/* Soft shadow & vignette so faces are identifiable while text remains crisp */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#003B2E]/95 via-[#004D3C]/75 to-[#004D3C]/60" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#004D3C]/80 via-transparent to-[#003B2E]/90" />
       </div>
 
       {/* Decorative Diagonal Curves / Shapes */}
