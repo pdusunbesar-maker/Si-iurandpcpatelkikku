@@ -155,6 +155,17 @@ interface AppContextType {
   generateWhatsAppLink: (phone?: string | null, text?: string) => string;
   normalizePhoneNumber: (phone?: string | null) => string;
   formatPhoneDisplay: (phone?: string | null, withCountryCode?: boolean) => string;
+  runDataAudit: () => {
+    consistent: boolean;
+    totalIssues: number;
+    issuesList: string[];
+    details: {
+      missingPaidInDuesRecords: number;
+      orphanedDuesRecords: number;
+      unmatchedSubmissions: number;
+    };
+  };
+  runAutoSync: () => Promise<{ success: boolean; message: string; fixedCount: number }>;
   resetAllDataToDefault: () => Promise<void>;
 
   // Supabase Database Integration
@@ -1136,11 +1147,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
-    // 2. Mark dues records as paid
+    // 2. Mark dues records as paid (and create if missing)
     const targetSet = new Set(months.map(m => `${m.year}-${m.month}`));
+    const memberObj = members.find(m => m.id === memberId || m.nap === memberId);
+    const resolvedMemberId = memberObj?.id || memberId;
+
     setDuesRecords(prev => {
-      const next = prev.map(d => {
-        if (d.memberId === memberId && targetSet.has(`${d.year}-${d.month}`)) {
+      const updated = prev.map(d => {
+        const matches =
+          d.memberId === resolvedMemberId ||
+          d.memberId === memberId ||
+          (memberObj && (d.memberId === memberObj.id || d.memberId === memberObj.nap));
+        if (matches && targetSet.has(`${d.year}-${d.month}`)) {
           return {
             ...d,
             status: 'paid' as const,
@@ -1150,6 +1168,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return d;
       });
+
+      const existingKeys = new Set(
+        updated
+          .filter(d => d.memberId === resolvedMemberId || (memberObj && (d.memberId === memberObj.id || d.memberId === memberObj.nap)))
+          .map(d => `${d.year}-${d.month}`)
+      );
+
+      const newlyCreated: DuesRecord[] = [];
+      months.forEach(m => {
+        const key = `${m.year}-${m.month}`;
+        if (!existingKeys.has(key)) {
+          newlyCreated.push({
+            memberId: resolvedMemberId,
+            year: m.year,
+            month: m.month,
+            status: 'paid',
+            amount: settings.monthlyFee,
+            paymentId: subId,
+            updatedAt: nowIsoDate,
+          });
+        }
+      });
+
+      const next = [...updated, ...newlyCreated];
       localStorage.setItem('patelki_dues', JSON.stringify(next));
       return next;
     });
@@ -1322,12 +1364,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : s
     );
 
-    // 2. Update all corresponding months to 'paid'
-    const nextDues = duesRecords.map(d => {
-      if (
-        (d.memberId === sub.memberId || d.memberId === sub.memberNap) &&
-        sub.months.some(m => m.year === d.year && m.month === d.month)
-      ) {
+    // 2. Update all corresponding months to 'paid' (and create if missing)
+    const memberObj = members.find(m => m.id === sub.memberId || m.nap === sub.memberNap || m.nap === sub.memberId);
+    const resolvedMemberId = memberObj?.id || sub.memberId;
+    const subMonthKeys = new Set(sub.months.map(m => `${m.year}-${m.month}`));
+
+    const updatedDues = duesRecords.map(d => {
+      const matches =
+        d.memberId === resolvedMemberId ||
+        d.memberId === sub.memberId ||
+        d.memberId === sub.memberNap ||
+        (memberObj && (d.memberId === memberObj.id || d.memberId === memberObj.nap));
+      if (matches && subMonthKeys.has(`${d.year}-${d.month}`)) {
         return {
           ...d,
           status: 'paid' as const,
@@ -1337,6 +1385,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return d;
     });
+
+    const existingKeys = new Set(
+      updatedDues
+        .filter(d => d.memberId === resolvedMemberId || (memberObj && (d.memberId === memberObj.id || d.memberId === memberObj.nap)))
+        .map(d => `${d.year}-${d.month}`)
+    );
+
+    const newlyCreatedDues: DuesRecord[] = [];
+    sub.months.forEach(m => {
+      const key = `${m.year}-${m.month}`;
+      if (!existingKeys.has(key)) {
+        newlyCreatedDues.push({
+          memberId: resolvedMemberId,
+          year: m.year,
+          month: m.month,
+          status: 'paid',
+          amount: settings.monthlyFee,
+          paymentId: sub.id,
+          updatedAt: nowIsoDate,
+        });
+      }
+    });
+
+    const nextDues = [...updatedDues, ...newlyCreatedDues];
 
     // 3. Automatically add to Cashbook (Buku Kas Masuk)
     const monthDescriptions = sub.months
@@ -1963,11 +2035,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Map existing member dues by `${year}-${month}`
     const memberRecordsMap = new Map<string, DuesRecord>();
     duesRecords.forEach(d => {
-      if (d.memberId === memberId || (member && (d.memberId === member.id || d.memberId === member.nap))) {
+      if (
+        d.memberId === memberId ||
+        d.memberId === member?.id ||
+        d.memberId === member?.nap ||
+        (member && (d.memberId === member.id || d.memberId === member.nap))
+      ) {
         memberRecordsMap.set(`${d.year}-${d.month}`, d);
         if (d.status === 'paid' && (!filterYear || d.year === filterYear)) {
           totalPaid += (d.amount || fee);
         }
+      }
+    });
+
+    // Also check if any approved payment submission covers this member for year/month
+    paymentSubmissions.forEach(sub => {
+      if (
+        sub.status === 'approved' &&
+        (sub.memberId === memberId ||
+         sub.memberNap === memberId ||
+         sub.memberId === member?.id ||
+         sub.memberNap === member?.nap ||
+         (member && (sub.memberId === member.id || sub.memberId === member.nap || sub.memberNap === member.nap)))
+      ) {
+        sub.months.forEach(m => {
+          if (!filterYear || m.year === filterYear) {
+            const key = `${m.year}-${m.month}`;
+            const existing = memberRecordsMap.get(key);
+            if (!existing || existing.status !== 'paid') {
+              memberRecordsMap.set(key, {
+                memberId: member?.id || memberId,
+                year: m.year,
+                month: m.month,
+                status: 'paid',
+                amount: fee,
+                paymentId: sub.id,
+              });
+              if (!filterYear || m.year === filterYear) {
+                totalPaid += fee;
+              }
+            }
+          }
+        });
       }
     });
 
@@ -2068,6 +2177,142 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currency: 'IDR',
       minimumFractionDigits: 0,
     }).format(amount);
+  };
+
+  // Automated Data Audit & Auto-Sync
+  const runDataAudit = () => {
+    let issuesCount = 0;
+    const issuesList: string[] = [];
+    let missingPaidInDuesRecords = 0;
+    let orphanedDuesRecords = 0;
+    let unmatchedSubmissions = 0;
+
+    paymentSubmissions.forEach(sub => {
+      if (sub.status === 'approved') {
+        const member = members.find(m => m.id === sub.memberId || m.nap === sub.memberNap || m.nap === sub.memberId);
+        if (!member) {
+          unmatchedSubmissions++;
+          issuesCount++;
+          issuesList.push(`Payment submission #${sub.id} memiliki member tidak valid/tidak ditemukan.`);
+        } else {
+          sub.months.forEach(m => {
+            const found = duesRecords.find(d =>
+              (d.memberId === member.id || d.memberId === member.nap) &&
+              d.year === m.year &&
+              d.month === m.month &&
+              d.status === 'paid'
+            );
+            if (!found) {
+              missingPaidInDuesRecords++;
+              issuesCount++;
+              issuesList.push(`Member ${member.nama} (NAP: ${member.nap || '-'}) sudah disetujui pembayarannya untuk ${m.month}/${m.year} tetapi belum tercatat 'paid' di duesRecords.`);
+            }
+          });
+        }
+      }
+    });
+
+    duesRecords.forEach(d => {
+      const member = members.find(m => m.id === d.memberId || m.nap === d.memberId);
+      if (!member) {
+        orphanedDuesRecords++;
+        issuesCount++;
+        issuesList.push(`Catatan iuran (duesRecord) memiliki ID member tidak dikenal: ${d.memberId}`);
+      }
+    });
+
+    return {
+      consistent: issuesCount === 0,
+      totalIssues: issuesCount,
+      issuesList,
+      details: {
+        missingPaidInDuesRecords,
+        orphanedDuesRecords,
+        unmatchedSubmissions,
+      },
+    };
+  };
+
+  const runAutoSync = async (): Promise<{ success: boolean; message: string; fixedCount: number }> => {
+    let fixedCount = 0;
+    const nowIso = new Date().toISOString().split('T')[0];
+
+    const nextDues = [...duesRecords];
+    paymentSubmissions.forEach(sub => {
+      if (sub.status === 'approved') {
+        const member = members.find(m => m.id === sub.memberId || m.nap === sub.memberNap || m.nap === sub.memberId);
+        if (member) {
+          sub.months.forEach(m => {
+            const idx = nextDues.findIndex(d =>
+              (d.memberId === member.id || d.memberId === member.nap) &&
+              d.year === m.year &&
+              d.month === m.month
+            );
+            if (idx >= 0) {
+              if (nextDues[idx].status !== 'paid') {
+                nextDues[idx] = {
+                  ...nextDues[idx],
+                  status: 'paid',
+                  amount: nextDues[idx].amount || settings.monthlyFee || 30000,
+                  paymentId: sub.id,
+                  updatedAt: nowIso,
+                };
+                fixedCount++;
+              }
+            } else {
+              nextDues.push({
+                memberId: member.id,
+                year: m.year,
+                month: m.month,
+                status: 'paid',
+                amount: settings.monthlyFee || 30000,
+                paymentId: sub.id,
+                updatedAt: nowIso,
+              });
+              fixedCount++;
+            }
+          });
+        }
+      }
+    });
+
+    const cleanedDues = nextDues.filter(d => {
+      const exists = members.some(m => m.id === d.memberId || m.nap === d.memberId);
+      if (!exists) fixedCount++;
+      return exists;
+    });
+
+    setDuesRecords(cleanedDues);
+    localStorage.setItem('patelki_dues', JSON.stringify(cleanedDues));
+
+    addActivityLog({
+      actorName: 'Bendahara DPC (Auto-Sync Audit)',
+      actorRole: 'bendahara',
+      category: 'dues',
+      action: 'audit',
+      title: 'Audit & Auto-Sync Konsistensi Data Iuran',
+      description: `Berhasil melakukan audit dan memperbaiki ${fixedCount} inkonsistensi data pembayaran iuran.`,
+      newValue: `${fixedCount} item disinkronkan`,
+    });
+
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      await pushAllDataToSupabase({
+        members,
+        duesRecords: cleanedDues,
+        paymentSubmissions,
+        transactions,
+        donations,
+        socialServices,
+        bankAccounts,
+        settings,
+      }).catch(console.warn);
+    }
+
+    return {
+      success: true,
+      message: `Auto-sync berhasil! Total ${fixedCount} masalah disinkronkan dan diperbaiki.`,
+      fixedCount,
+    };
   };
 
   const resetAllDataToDefault = async () => {
@@ -2239,6 +2484,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         generateWhatsAppLink,
         normalizePhoneNumber,
         formatPhoneDisplay,
+        runDataAudit,
+        runAutoSync,
         resetAllDataToDefault,
         // Supabase Database Integration
         isSupabaseActive,

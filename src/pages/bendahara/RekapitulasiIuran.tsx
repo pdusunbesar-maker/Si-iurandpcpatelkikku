@@ -36,7 +36,12 @@ export const RekapitulasiIuran: React.FC = () => {
   // Monthly stats breakdown for the selected year
   const monthlyBreakdown = MONTH_NAMES.map((name, index) => {
     const monthNum = index + 1;
-    const records = duesRecords.filter(d => d.year === selectedYear && d.month === monthNum);
+    const records = duesRecords.filter(d => {
+      if (d.year !== selectedYear || d.month !== monthNum) return false;
+      return activeMembers.some(
+        am => am.id === d.memberId || am.nap === d.memberId || d.memberId === am.id || d.memberId === am.nap
+      );
+    });
 
     const paidRecords = records.filter(d => d.status === 'paid');
     const unpaidRecords = records.filter(d => d.status === 'unpaid');

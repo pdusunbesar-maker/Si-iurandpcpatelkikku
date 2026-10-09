@@ -1190,7 +1190,7 @@ export const LaporanAnggaranTahunan: React.FC = () => {
                   {tempBudgetPlan
                     .filter(p => p.type === 'income')
                     .map(plan => (
-                      <div key={`edit-${plan.category}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                      <div key={`edit-${plan.type}-${plan.category}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                         <label className="font-bold text-slate-700 block truncate" title={plan.category}>
                           {plan.category}
                         </label>
@@ -1228,7 +1228,7 @@ export const LaporanAnggaranTahunan: React.FC = () => {
                   {tempBudgetPlan
                     .filter(p => p.type === 'expense')
                     .map(plan => (
-                      <div key={`edit-${plan.category}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                      <div key={`edit-${plan.type}-${plan.category}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                         <label className="font-bold text-slate-700 block truncate" title={plan.category}>
                           {plan.category}
                         </label>
@@ -1340,7 +1340,7 @@ export const LaporanAnggaranTahunan: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-200">
             {budgetItems.map((item, idx) => (
-              <tr key={`print-${item.category}`} className="border-b border-slate-200">
+              <tr key={`print-${item.type}-${item.category}`} className="border-b border-slate-200">
                 <td className="p-2 text-center border-r border-slate-200">{idx + 1}</td>
                 <td className="p-2 uppercase font-bold text-[10px] border-r border-slate-200">
                   {item.type === 'income' ? 'Pendapatan' : 'Belanja'}

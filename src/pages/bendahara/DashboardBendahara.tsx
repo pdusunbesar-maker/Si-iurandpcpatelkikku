@@ -29,6 +29,15 @@ import {
 } from 'lucide-react';
 import { Member } from '../../types';
 import { DashboardTrendsChart } from '../../components/bendahara/DashboardTrendsChart';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
 
 interface DashboardBendaharaProps {
   onNavigate: (page: string) => void;
@@ -57,7 +66,48 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
     getTotalSocialServices,
     getYearlyArrearsList,
     formatCurrency,
+    runDataAudit,
+    runAutoSync,
   } = useApp();
+
+  const [auditResult, setAuditResult] = useState<{
+    consistent: boolean;
+    totalIssues: number;
+    issuesList: string[];
+    details: {
+      missingPaidInDuesRecords: number;
+      orphanedDuesRecords: number;
+      unmatchedSubmissions: number;
+    };
+  } | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const handleRunAudit = () => {
+    setIsAuditing(true);
+    setSyncMessage(null);
+    setTimeout(() => {
+      const res = runDataAudit();
+      setAuditResult(res);
+      setIsAuditing(false);
+    }, 400);
+  };
+
+  const handleRunAutoSync = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await runAutoSync();
+      setSyncMessage(res.message);
+      const updatedAudit = runDataAudit();
+      setAuditResult(updatedAudit);
+    } catch (err: any) {
+      setSyncMessage(err.message || 'Gagal melakukan auto-sync');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const now = new Date();
   const currentYear = now.getFullYear();
@@ -506,6 +556,93 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
         </div>
       </div>
 
+      {/* Automated Data Audit & Auto-Sync Card */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-200">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-900 text-base">Audit Otomatis & Konsistensi Data Iuran</h3>
+              <p className="text-xs text-slate-500">
+                Periksa kesesuaian data antara tabel transaksi iuran, verifikasi pembayaran, dan status anggota secara real-time.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRunAudit}
+              disabled={isAuditing}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <Sparkles className={`w-4 h-4 text-amber-400 ${isAuditing ? 'animate-spin' : ''}`} />
+              {isAuditing ? 'Memeriksa...' : 'Jalankan Audit Otomatis'}
+            </button>
+
+            {auditResult && !auditResult.consistent && (
+              <button
+                onClick={handleRunAutoSync}
+                disabled={isSyncing}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <ShieldCheck className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Menyelaraskan...' : 'Perbaiki Otomatis (Auto-Sync)'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {syncMessage && (
+          <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-2xl font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{syncMessage}</span>
+          </div>
+        )}
+
+        {auditResult ? (
+          <div className="space-y-3 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {auditResult.consistent ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Data Sesuai & Konsisten (0 Inkonsistensi)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    Ditemukan {auditResult.totalIssues} Ketidaksesuaian Data
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                Terakhir diaudit: {new Date().toLocaleTimeString('id-ID')}
+              </span>
+            </div>
+
+            {!auditResult.consistent && (
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                <p className="text-xs font-bold text-slate-800">Rincian Temuan Ketidaksesuaian:</p>
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto pr-2">
+                  {auditResult.issuesList.map((issue, idx) => (
+                    <li key={idx} className="text-xs text-slate-600 flex items-start gap-2 bg-white p-2 rounded-xl border border-slate-200">
+                      <span className="text-amber-500 font-bold">#{idx + 1}</span>
+                      <span className="flex-1">{issue}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="pt-2 text-xs text-slate-400 italic flex items-center gap-2">
+            <span>ℹ️ Klik tombol "Jalankan Audit Otomatis" untuk memulai pengecekan konsistensi data.</span>
+          </div>
+        )}
+      </div>
+
       {/* Visual Analytics: Monthly Iuran Collection Trends & Active Member Growth (Recharts) */}
       <DashboardTrendsChart onNavigate={onNavigate} />
 
@@ -568,50 +705,48 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
               </div>
             </div>
 
-            {/* Dynamic Monthly Bar Visualization */}
-            <div className="h-60 flex items-end justify-between gap-1 sm:gap-2 pt-6 pb-2 px-1 border-b border-slate-100">
-              {monthlyData.map(item => {
-                const incomeHeight = item.income > 0 ? (item.income / maxChartVal) * 100 : 0;
-                const expenseHeight = item.expense > 0 ? (item.expense / maxChartVal) * 100 : 0;
-
-                return (
-                  <div key={item.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end group">
-                    <div className="w-full flex items-end justify-center gap-0.5 sm:gap-1 h-full">
-                      {/* Income Bar */}
-                      <div
-                        style={{ height: `${Math.max(incomeHeight, item.income > 0 ? 8 : 2)}%` }}
-                        className={`w-1/2 max-w-[16px] rounded-t-md transition-all relative ${
-                          item.income > 0 ? 'bg-emerald-500 group-hover:bg-emerald-600' : 'bg-slate-200'
-                        }`}
-                      >
-                        {item.income > 0 && (
-                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                            Masuk: {formatCurrency(item.income)}
+            {/* Recharts Monthly Income vs Expense Bar Chart */}
+            <div className="h-72 w-full pt-4 pb-2 border-b border-slate-100">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#64748b' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(val) => val >= 1000000 ? `${(val / 1000000).toFixed(0)}jt` : `${val / 1000}rb`}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs min-w-[180px]">
+                            <p className="font-bold text-amber-400 mb-2 border-b border-slate-700 pb-1">Bulan: {label} {chartYear}</p>
+                            <div className="space-y-1 font-mono">
+                              <p className="flex justify-between gap-3 text-emerald-400">
+                                <span>Pemasukan:</span>
+                                <span className="font-bold">{formatCurrency(payload[0]?.value as number || 0)}</span>
+                              </p>
+                              <p className="flex justify-between gap-3 text-amber-400">
+                                <span>Pengeluaran:</span>
+                                <span className="font-bold">{formatCurrency(payload[1]?.value as number || 0)}</span>
+                              </p>
+                              <p className="flex justify-between gap-3 pt-1 border-t border-slate-700 text-white font-bold">
+                                <span>Net Surplus:</span>
+                                <span>{formatCurrency(((payload[0]?.value as number) || 0) - ((payload[1]?.value as number) || 0))}</span>
+                              </p>
+                            </div>
                           </div>
-                        )}
-                      </div>
-
-                      {/* Expense Bar */}
-                      <div
-                        style={{ height: `${Math.max(expenseHeight, item.expense > 0 ? 8 : 2)}%` }}
-                        className={`w-1/2 max-w-[16px] rounded-t-md transition-all relative ${
-                          item.expense > 0 ? 'bg-amber-400 group-hover:bg-amber-500' : 'bg-slate-200'
-                        }`}
-                      >
-                        {item.expense > 0 && (
-                          <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-slate-900 text-white text-[10px] py-0.5 px-1.5 rounded-md whitespace-nowrap z-20 pointer-events-none">
-                            Keluar: {formatCurrency(item.expense)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 group-hover:text-slate-900">
-                      {item.month}
-                    </span>
-                  </div>
-                );
-              })}
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="income" name="Pemasukan Kas" fill="#10b981" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="expense" name="Pengeluaran Kas" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
