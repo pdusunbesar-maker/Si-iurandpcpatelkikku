@@ -20,6 +20,7 @@ import {
   CreditCard,
   User,
   History,
+  ShieldAlert,
   Send,
   Building2,
   Sliders,
@@ -307,6 +308,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   <button
                     type="button"
+                    onClick={() => handleNav('anggaran-tahunan')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      currentPage === 'anggaran-tahunan'
+                        ? 'bg-emerald-50 text-emerald-950 font-bold border-l-4 border-emerald-600'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4 text-emerald-600" />
+                    Anggaran Tahunan (RAPB)
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => handleNav('whatsapp-broadcast')}
                     className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
                       currentPage === 'whatsapp-broadcast'
@@ -326,6 +340,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   Konfigurasi
                 </p>
                 <div className="mt-1.5 space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => handleNav('activity-logs')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      currentPage === 'activity-logs'
+                        ? 'bg-emerald-50 text-emerald-950 font-bold border-l-4 border-emerald-600'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <ShieldAlert className="w-4 h-4 text-emerald-600" />
+                    Log Aktivitas & Audit
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleNav('pengaturan')}

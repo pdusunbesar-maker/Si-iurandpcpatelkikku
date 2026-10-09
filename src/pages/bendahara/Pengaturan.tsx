@@ -64,20 +64,34 @@ export const Pengaturan: React.FC = () => {
   const [settingsForm, setSettingsForm] = useState(settings);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [waSavedSuccess, setWaSavedSuccess] = useState(false);
+  const [isSavingWa, setIsSavingWa] = useState(false);
+  const [isSavingAuth, setIsSavingAuth] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Sync settingsForm if settings change externally
   React.useEffect(() => {
     setSettingsForm(settings);
+    if (settings.bendaharaName) setTreasurerName(settings.bendaharaName);
+    if (settings.bendaharaNap) setTreasurerNap(settings.bendaharaNap);
+    if (settings.treasurerUsername) setTreasurerUser(settings.treasurerUsername);
+    if (settings.treasurerPassword) setTreasurerPass(settings.treasurerPassword);
   }, [settings]);
 
-  const handleSaveWaNumber = (e?: React.FormEvent) => {
+  const handleSaveWaNumber = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const cleanWa = normalizePhoneNumber(settingsForm.contactWa);
-    const updated = { ...settingsForm, contactWa: cleanWa };
-    setSettingsForm(updated);
-    updateSettings({ contactWa: cleanWa });
-    setWaSavedSuccess(true);
-    setTimeout(() => setWaSavedSuccess(false), 2500);
+    setIsSavingWa(true);
+    try {
+      const cleanWa = normalizePhoneNumber(settingsForm.contactWa);
+      const updated = { ...settingsForm, contactWa: cleanWa };
+      setSettingsForm(updated);
+      await updateSettings({ contactWa: cleanWa });
+      setWaSavedSuccess(true);
+      setTimeout(() => setWaSavedSuccess(false), 2500);
+    } catch (err: any) {
+      console.error('Error saving WhatsApp number:', err);
+    } finally {
+      setIsSavingWa(false);
+    }
   };
 
   const handleTestWa = () => {
@@ -187,7 +201,7 @@ export const Pengaturan: React.FC = () => {
   const [showTreasurerPass, setShowTreasurerPass] = useState(false);
   const [authSavedSuccess, setAuthSavedSuccess] = useState(false);
 
-  const handleSaveAuth = (e: React.FormEvent) => {
+  const handleSaveAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!treasurerName.trim()) {
       alert('Nama Bendahara tidak boleh kosong!');
@@ -202,43 +216,57 @@ export const Pengaturan: React.FC = () => {
       return;
     }
 
-    const cleanName = treasurerName.trim();
-    const cleanNap = treasurerNap.trim();
+    setIsSavingAuth(true);
+    try {
+      const cleanName = treasurerName.trim();
+      const cleanNap = treasurerNap.trim();
+      const cleanUser = treasurerUser.trim();
+      const cleanPass = treasurerPass.trim();
 
-    // 1. Update settings
-    updateSettings({
-      bendaharaName: cleanName,
-      bendaharaNap: cleanNap,
-      treasurerUsername: treasurerUser.trim(),
-      treasurerPassword: treasurerPass.trim(),
-    });
-
-    // 2. Sync with settingsForm
-    setSettingsForm(prev => ({
-      ...prev,
-      bendaharaName: cleanName,
-      bendaharaNap: cleanNap,
-    }));
-
-    // 3. Sync with treasurer member and currentMember
-    if (treasurerMember) {
-      updateMember(treasurerMember.id, {
-        nama: cleanName,
-        nap: cleanNap,
-        foto: treasurerPhoto,
+      // 1. Update settings directly to Supabase
+      await updateSettings({
+        bendaharaName: cleanName,
+        bendaharaNap: cleanNap,
+        treasurerUsername: cleanUser,
+        treasurerPassword: cleanPass,
       });
-      if (currentMember) {
-        setCurrentMember({
-          ...currentMember,
+
+      // 2. Sync with settingsForm
+      setSettingsForm(prev => ({
+        ...prev,
+        bendaharaName: cleanName,
+        bendaharaNap: cleanNap,
+        treasurerUsername: cleanUser,
+        treasurerPassword: cleanPass,
+      }));
+
+      // 3. Sync with treasurer member and currentMember
+      if (treasurerMember) {
+        updateMember(treasurerMember.id, {
           nama: cleanName,
           nap: cleanNap,
           foto: treasurerPhoto,
+          password: cleanPass,
         });
+        if (currentMember) {
+          setCurrentMember({
+            ...currentMember,
+            nama: cleanName,
+            nap: cleanNap,
+            foto: treasurerPhoto,
+            password: cleanPass,
+          });
+        }
       }
-    }
 
-    setAuthSavedSuccess(true);
-    setTimeout(() => setAuthSavedSuccess(false), 2500);
+      setAuthSavedSuccess(true);
+      setTimeout(() => setAuthSavedSuccess(false), 2500);
+    } catch (err: any) {
+      console.error('Error saving treasurer auth:', err);
+      alert('Terjadi kesalahan saat menyimpan: ' + (err.message || String(err)));
+    } finally {
+      setIsSavingAuth(false);
+    }
   };
 
   // Bank modal state
@@ -255,33 +283,46 @@ export const Pengaturan: React.FC = () => {
     notes: '',
   });
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(settingsForm);
+    setIsSavingSettings(true);
+    try {
+      const cleanSettings = {
+        ...settingsForm,
+        contactWa: normalizePhoneNumber(settingsForm.contactWa),
+      };
+      setSettingsForm(cleanSettings);
+      await updateSettings(cleanSettings);
 
-    if (settingsForm.bendaharaName) {
-      setTreasurerName(settingsForm.bendaharaName);
-    }
-    if (settingsForm.bendaharaNap) {
-      setTreasurerNap(settingsForm.bendaharaNap);
-    }
-
-    if (treasurerMember) {
-      updateMember(treasurerMember.id, {
-        nama: settingsForm.bendaharaName,
-        nap: settingsForm.bendaharaNap,
-      });
-      if (currentMember) {
-        setCurrentMember({
-          ...currentMember,
-          nama: settingsForm.bendaharaName,
-          nap: settingsForm.bendaharaNap,
-        });
+      if (cleanSettings.bendaharaName) {
+        setTreasurerName(cleanSettings.bendaharaName);
       }
-    }
+      if (cleanSettings.bendaharaNap) {
+        setTreasurerNap(cleanSettings.bendaharaNap);
+      }
 
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+      if (treasurerMember) {
+        updateMember(treasurerMember.id, {
+          nama: cleanSettings.bendaharaName,
+          nap: cleanSettings.bendaharaNap,
+        });
+        if (currentMember) {
+          setCurrentMember({
+            ...currentMember,
+            nama: cleanSettings.bendaharaName,
+            nap: cleanSettings.bendaharaNap,
+          });
+        }
+      }
+
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
+    } catch (err: any) {
+      console.error('Error saving general settings:', err);
+      alert('Gagal menyimpan pengaturan: ' + (err.message || String(err)));
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   const handleSaveBank = (e: React.FormEvent) => {

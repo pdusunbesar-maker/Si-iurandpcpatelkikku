@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import * as XLSX from 'xlsx';
 import {
   BarChart3,
   Calendar,
@@ -10,7 +9,13 @@ import {
   Printer,
   FileSpreadsheet,
   TrendingUp,
+  Download,
 } from 'lucide-react';
+import { PatelkiLogo } from '../../components/PatelkiLogo';
+import {
+  exportRekapitulasiIuranExcel,
+  exportRekapitulasiIuranPDF,
+} from '../../utils/exportFinancialReports';
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -20,6 +25,9 @@ const MONTH_NAMES = [
 export const RekapitulasiIuran: React.FC = () => {
   const { members, duesRecords, settings, formatCurrency } = useApp();
   const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
 
   const activeMembers = members.filter(m => m.status === 'aktif');
   const activeCount = activeMembers.length;
@@ -60,28 +68,64 @@ export const RekapitulasiIuran: React.FC = () => {
     monthlyBreakdown.reduce((sum, m) => sum + m.compliance, 0) / (monthlyBreakdown.length || 1);
 
   const handleExportExcel = () => {
-    const exportData = monthlyBreakdown.map(m => ({
-      Bulan: `${m.name} ${selectedYear}`,
-      'Total Anggota Aktif': activeCount,
-      'Sudah Bayar': m.paidCount,
-      'Belum Bayar': m.unpaidCount,
-      'Menunggu Verifikasi': m.pendingCount,
-      'Potensi Penerimaan (Rp)': m.potential,
-      'Iuran Masuk (Rp)': m.collected,
-      'Tunggakan (Rp)': m.arrears,
-      'Kepatuhan (%)': `${m.compliance}%`,
-    }));
+    try {
+      setIsExportingExcel(true);
+      exportRekapitulasiIuranExcel(
+        monthlyBreakdown,
+        selectedYear,
+        activeCount,
+        settings,
+        members,
+        duesRecords
+      );
+      setExportSuccessMessage(`✓ File Excel Rekapitulasi Iuran Tahun ${selectedYear} berhasil diunduh.`);
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting Excel:', err);
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Rekap_Bulanan_${selectedYear}`);
-    XLSX.writeFile(workbook, `Rekapitulasi_Iuran_Patelki_${selectedYear}.xlsx`);
+  const handleDownloadPDF = () => {
+    try {
+      setIsExportingPdf(true);
+      exportRekapitulasiIuranPDF(
+        monthlyBreakdown,
+        selectedYear,
+        activeCount,
+        settings
+      );
+      setExportSuccessMessage(`✓ File PDF resmi Rekapitulasi Iuran Tahun ${selectedYear} berhasil diunduh.`);
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Toast Notification Banner for Downloads */}
+      {exportSuccessMessage && (
+        <div className="no-print p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs font-bold text-emerald-900 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{exportSuccessMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportSuccessMessage(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-black cursor-pointer text-sm px-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -97,7 +141,7 @@ export const RekapitulasiIuran: React.FC = () => {
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs">
             <Calendar className="w-4 h-4 text-amber-500 mr-2" />
             <select
@@ -113,28 +157,45 @@ export const RekapitulasiIuran: React.FC = () => {
             </select>
           </div>
 
+          {/* Export Excel Button */}
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+            disabled={isExportingExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Download rekapitulasi iuran format Excel (.xlsx)"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
+            <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
           </button>
 
+          {/* Download PDF Button */}
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            disabled={isExportingPdf}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Download rekapitulasi iuran format PDF resmi (.pdf)"
+          >
+            <Download className="w-4 h-4" />
+            <span>{isExportingPdf ? 'Menyiapkan...' : 'Download PDF'}</span>
+          </button>
+
+          {/* Cetak / Print PDF Button */}
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Cetak langsung dokumen ke printer atau simpan PDF melalui browser"
           >
             <Printer className="w-4 h-4" />
-            Cetak
+            <span>Cetak / Cetak PDF</span>
           </button>
         </div>
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="no-print grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <p className="text-xs font-bold text-slate-500 uppercase">Potensi Kas Tahunan</p>
           <p className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-1">
@@ -177,7 +238,7 @@ export const RekapitulasiIuran: React.FC = () => {
       </div>
 
       {/* Monthly Breakdown Detailed Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="no-print bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-900 text-white font-black uppercase text-[11px] tracking-wider">
@@ -276,6 +337,107 @@ export const RekapitulasiIuran: React.FC = () => {
               </tr>
             </tfoot>
           </table>
+        </div>
+      </div>
+
+      {/* Official Printable Report Document for window.print() / Save-as-PDF */}
+      <div id="report-document" className="print-only hidden p-8 bg-white text-slate-900 font-sans">
+        {/* Kop Surat Resmi */}
+        <div className="border-b-4 border-double border-slate-900 pb-4 flex items-center gap-4">
+          <PatelkiLogo size={70} />
+          <div className="flex-1">
+            <h3 className="text-xs font-bold tracking-widest text-emerald-800 uppercase">
+              PERSATUAN AHLI TEKNOLOGI LABORATORIUM MEDIK INDONESIA (PATELKI)
+            </h3>
+            <h1 className="text-lg font-black text-slate-950 tracking-tight">
+              DEWAN PENGURUS CABANG KABUPATEN KAYONG UTARA
+            </h1>
+            <p className="text-[10px] text-slate-600 mt-0.5 leading-snug">
+              Sekretariat: {settings.address || 'Kabupaten Kayong Utara, Kalimantan Barat'} • WA: {settings.contactWa || '-'} • Email: {settings.contactEmail || '-'}
+            </p>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div className="my-6 text-center">
+          <h2 className="text-base font-black tracking-wider text-slate-900 uppercase">
+            LAPORAN REKAPITULASI & KOLEKTIBILITAS IURAN ANGGOTA
+          </h2>
+          <p className="text-xs font-bold text-amber-700 mt-0.5 uppercase tracking-wider">
+            TAHUN ANGGARAN {selectedYear} (12 BULAN)
+          </p>
+        </div>
+
+        {/* Summary Info Box */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+          <span><strong>Anggota Aktif:</strong> {activeCount} ATLM</span>
+          <span><strong>Potensi Tagihan:</strong> {formatCurrency(yearTotalPotential)}</span>
+          <span className="text-emerald-800"><strong>Iuran Terkumpul:</strong> {formatCurrency(yearTotalCollected)}</span>
+          <span className="text-red-700"><strong>Tunggakan:</strong> {formatCurrency(yearTotalArrears)} ({Math.round(yearAverageCompliance)}% Kepatuhan)</span>
+        </div>
+
+        {/* Printable Table */}
+        <table className="w-full text-left text-xs border border-slate-300 border-collapse mb-6">
+          <thead className="bg-slate-100 font-bold text-slate-900 text-[11px]">
+            <tr className="border-b border-slate-300">
+              <th className="p-2 text-center border-r border-slate-300 w-10">No</th>
+              <th className="p-2 border-r border-slate-300">Bulan</th>
+              <th className="p-2 text-center border-r border-slate-300">Sudah Bayar</th>
+              <th className="p-2 text-center border-r border-slate-300">Belum Bayar</th>
+              <th className="p-2 text-center border-r border-slate-300">Verifikasi</th>
+              <th className="p-2 text-right border-r border-slate-300">Potensi Tagihan</th>
+              <th className="p-2 text-right border-r border-slate-300">Pemasukan Iuran</th>
+              <th className="p-2 text-right border-r border-slate-300">Tunggakan</th>
+              <th className="p-2 text-center">Kepatuhan</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {monthlyBreakdown.map((m, idx) => (
+              <tr key={m.name} className="border-b border-slate-200">
+                <td className="p-2 text-center border-r border-slate-200">{idx + 1}</td>
+                <td className="p-2 font-bold border-r border-slate-200">{m.name} {selectedYear}</td>
+                <td className="p-2 text-center font-bold text-emerald-800 border-r border-slate-200">{m.paidCount}</td>
+                <td className="p-2 text-center font-bold text-red-700 border-r border-slate-200">{m.unpaidCount}</td>
+                <td className="p-2 text-center border-r border-slate-200">{m.pendingCount > 0 ? m.pendingCount : '-'}</td>
+                <td className="p-2 text-right font-mono border-r border-slate-200">{formatCurrency(m.potential)}</td>
+                <td className="p-2 text-right font-mono font-bold text-emerald-800 border-r border-slate-200">{formatCurrency(m.collected)}</td>
+                <td className="p-2 text-right font-mono font-bold text-red-700 border-r border-slate-200">{formatCurrency(m.arrears)}</td>
+                <td className="p-2 text-center font-bold">{m.compliance}%</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+            <tr>
+              <td colSpan={2} className="p-2 text-center">TOTAL TAHUN {selectedYear}</td>
+              <td className="p-2 text-center text-emerald-800">{monthlyBreakdown.reduce((s, m) => s + m.paidCount, 0)}</td>
+              <td className="p-2 text-center text-red-800">{monthlyBreakdown.reduce((s, m) => s + m.unpaidCount, 0)}</td>
+              <td className="p-2 text-center text-amber-800">{monthlyBreakdown.reduce((s, m) => s + m.pendingCount, 0)}</td>
+              <td className="p-2 text-right font-mono">{formatCurrency(yearTotalPotential)}</td>
+              <td className="p-2 text-right font-mono text-emerald-800 font-black">{formatCurrency(yearTotalCollected)}</td>
+              <td className="p-2 text-right font-mono text-red-800 font-black">{formatCurrency(yearTotalArrears)}</td>
+              <td className="p-2 text-center font-black">{Math.round(yearAverageCompliance)}%</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Signatures */}
+        <div className="flex justify-between items-start mt-8 text-xs pt-4">
+          <div className="text-center w-64">
+            <p>Mengetahui,</p>
+            <p className="font-bold">Ketua DPC PATELKI Kayong Utara</p>
+            <div className="h-16"></div>
+            <p className="font-black underline">{settings.ketuaName || '( ..................................................... )'}</p>
+            <p className="text-[10px] text-slate-500 font-mono">NAP: {settings.ketuaNap || '-'}</p>
+          </div>
+
+          <div className="text-center w-64">
+            <p>Sukadana, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p>Dibuat Oleh,</p>
+            <p className="font-bold">Bendahara DPC PATELKI Kayong Utara</p>
+            <div className="h-16"></div>
+            <p className="font-black underline">{settings.bendaharaName || '( ..................................................... )'}</p>
+            <p className="text-[10px] text-slate-500 font-mono">NAP: {settings.bendaharaNap || '-'}</p>
+          </div>
         </div>
       </div>
     </div>

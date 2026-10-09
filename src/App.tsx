@@ -17,8 +17,10 @@ import { KasTransactionPage } from './pages/bendahara/KasTransactionPage';
 import { Donasi } from './pages/bendahara/Donasi';
 import { BaktiSosial } from './pages/bendahara/BaktiSosial';
 import { LaporanTransparansi } from './pages/bendahara/LaporanTransparansi';
+import { LaporanAnggaranTahunan } from './pages/bendahara/LaporanAnggaranTahunan';
 import { WhatsAppBroadcast } from './pages/bendahara/WhatsAppBroadcast';
 import { Pengaturan } from './pages/bendahara/Pengaturan';
+import { ActivityLogs } from './pages/bendahara/ActivityLogs';
 
 // Anggota Pages
 import { DashboardAnggota } from './pages/anggota/DashboardAnggota';
@@ -82,8 +84,12 @@ const MainContent: React.FC = () => {
           return <BaktiSosial />;
         case 'laporan':
           return <LaporanTransparansi />;
+        case 'anggaran-tahunan':
+          return <LaporanAnggaranTahunan />;
         case 'whatsapp-broadcast':
           return <WhatsAppBroadcast />;
+        case 'activity-logs':
+          return <ActivityLogs />;
         case 'pengaturan':
           return <Pengaturan />;
         default:

@@ -10,6 +10,7 @@ import {
   AppSettings,
   AppNotification,
   UserRole,
+  ActivityLog,
 } from '../types';
 import {
   INITIAL_MEMBERS,
@@ -21,6 +22,7 @@ import {
   INITIAL_NOTIFICATIONS,
   generateInitialDues,
   INITIAL_PAYMENT_SUBMISSIONS,
+  INITIAL_ACTIVITY_LOGS,
 } from '../data/initialData';
 import {
   isSupabaseConfigured,
@@ -36,6 +38,7 @@ import {
   clearTableFromSupabase,
   upsertToSupabase,
   updateInSupabase,
+  saveSettingsToSupabase,
 } from '../lib/supabase';
 import {
   normalizePhoneNumber,
@@ -65,6 +68,11 @@ interface AppContextType {
   bankAccounts: BankAccount[];
   settings: AppSettings;
   notifications: AppNotification[];
+  activityLogs: ActivityLog[];
+
+  // Actions - Activity Logs & Audit
+  addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => void;
+  clearActivityLogs: () => void;
 
   // Actions - Members
   addMember: (member: Omit<Member, 'id'>) => void;
@@ -116,7 +124,7 @@ interface AppContextType {
   addBankAccount: (acc: Omit<BankAccount, 'id'>) => void;
   updateBankAccount: (id: string, acc: Partial<BankAccount>) => void;
   deleteBankAccount: (id: string) => void;
-  updateSettings: (newSettings: Partial<AppSettings>) => void;
+  updateSettings: (newSettings: Partial<AppSettings>) => Promise<{ success: boolean; message: string }> | void;
 
   // Actions - Notifications
   markNotificationAsRead: (id: string) => void;
@@ -253,6 +261,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('patelki_notifications');
     return saved ? JSON.parse(saved) : [];
   });
+
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
+    const saved = localStorage.getItem('patelki_activity_logs');
+    if (!saved) return INITIAL_ACTIVITY_LOGS;
+    try {
+      const parsed: ActivityLog[] = JSON.parse(saved);
+      return parsed.length > 0 ? parsed : INITIAL_ACTIVITY_LOGS;
+    } catch {
+      return INITIAL_ACTIVITY_LOGS;
+    }
+  });
+
+  const addActivityLog = (logData: Omit<ActivityLog, 'id' | 'timestamp'>) => {
+    const newLog: ActivityLog = {
+      ...logData,
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    setActivityLogs(prev => {
+      const updated = [newLog, ...prev].slice(0, 500); // keep up to 500 logs
+      localStorage.setItem('patelki_activity_logs', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Also attempt async write to Supabase if activity_logs table exists
+    if (isSupabaseConfigured()) {
+      upsertToSupabase('activity_logs', {
+        id: newLog.id,
+        timestamp: newLog.timestamp,
+        actor_name: newLog.actorName,
+        actor_role: newLog.actorRole,
+        category: newLog.category,
+        action: newLog.action,
+        title: newLog.title,
+        description: newLog.description,
+        old_value: newLog.oldValue,
+        new_value: newLog.newValue,
+        ip_address: newLog.ipAddress,
+        target_id: newLog.targetId,
+        metadata: newLog.metadata,
+      }, 'id').catch(() => {
+        // Table might not exist yet, local storage ensures 100% persistence
+      });
+    }
+  };
+
+  const clearActivityLogs = () => {
+    setActivityLogs([]);
+    localStorage.removeItem('patelki_activity_logs');
+  };
 
   // Supabase Database Integration State
   const [supabaseConfig, setSupabaseConfigState] = useState<SupabaseConfig>(getSupabaseConfig);
@@ -698,6 +757,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         treasurerPassword: newPassword ? newPassword.trim() : prev.treasurerPassword || 'bendahara123',
       };
       localStorage.setItem('patelki_settings', JSON.stringify(updated));
+
+      addActivityLog({
+        actorName: prev.bendaharaName ? `Bendahara DPC (${prev.bendaharaName})` : 'Bendahara DPC',
+        actorRole: 'bendahara',
+        category: 'auth',
+        action: 'update',
+        title: 'Perubahan Kredensial Login Bendahara',
+        description: `Username login diperbarui menjadi "${newUsername.trim()}" dan kata sandi baru disimpan.`,
+        newValue: `Username: ${newUsername.trim()}`,
+      });
+
       return updated;
     });
   };
@@ -1307,6 +1377,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       link: 'riwayat',
     });
 
+    // 6. Audit Trail Log
+    addActivityLog({
+      actorName: settings.bendaharaName ? `Bendahara DPC (${settings.bendaharaName})` : 'Bendahara DPC',
+      actorRole: 'bendahara',
+      category: 'dues',
+      action: 'approve',
+      title: `Verifikasi Iuran Lunas: ${sub.memberName}`,
+      description: `Menyetujui pembayaran ${sub.months.length} bulan (${monthDescriptions}) senilai ${formatCurrency(sub.totalAmount)} transfer ke ${sub.bankName}`,
+      newValue: `LUNAS: ${formatCurrency(sub.totalAmount)}`,
+      targetId: sub.id,
+    });
+
     // 6. Push exact updated state to Supabase so it never reverts!
     if (isSupabaseActive) {
       await pushAllDataToSupabase({
@@ -1365,6 +1447,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       title: 'Pembayaran Ditolak',
       message: `Pengajuan iuran Anda sebesar Rp ${sub.totalAmount.toLocaleString('id-ID')} ditolak dengan alasan: ${reason}`,
       type: 'danger',
+    });
+
+    // 5. Audit Trail Log
+    addActivityLog({
+      actorName: settings.bendaharaName ? `Bendahara DPC (${settings.bendaharaName})` : 'Bendahara DPC',
+      actorRole: 'bendahara',
+      category: 'dues',
+      action: 'reject',
+      title: `Penolakan Iuran: ${sub.memberName}`,
+      description: `Pengajuan iuran ${sub.months.length} bulan senilai ${formatCurrency(sub.totalAmount)} ditolak. Alasan: "${reason}"`,
+      newValue: `DITOLAK: ${reason}`,
+      targetId: submissionId,
     });
 
     // 5. Push exact updated state to Supabase
@@ -1435,6 +1529,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions(nextTransactions);
     localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
 
+    // Audit Trail Log
+    addActivityLog({
+      actorName: settings.bendaharaName ? `Bendahara DPC (${settings.bendaharaName})` : 'Bendahara DPC',
+      actorRole: 'bendahara',
+      category: 'transactions',
+      action: 'create',
+      title: `Pencatatan Kas ${tx.type === 'income' ? 'Masuk' : 'Keluar'} (${formatCurrency(tx.amount)})`,
+      description: `Kategori: ${tx.category}. Keterangan: ${tx.description}. Pihak: ${tx.sourceOrRecipient}`,
+      newValue: `${tx.type.toUpperCase()}: ${formatCurrency(tx.amount)}`,
+      targetId: newTx.id,
+    });
+
     if (isSupabaseActive) {
       pushAllDataToSupabase({
         members,
@@ -1454,6 +1560,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextTransactions = transactions.filter(t => t.id !== id);
     setTransactions(nextTransactions);
     localStorage.setItem('patelki_transactions', JSON.stringify(nextTransactions));
+
+    if (txToDelete) {
+      addActivityLog({
+        actorName: settings.bendaharaName ? `Bendahara DPC (${settings.bendaharaName})` : 'Bendahara DPC',
+        actorRole: 'bendahara',
+        category: 'transactions',
+        action: 'delete',
+        title: `Penghapusan Transaksi Kas (${formatCurrency(txToDelete.amount)})`,
+        description: `Menghapus transaksi ${txToDelete.type} (${txToDelete.category}): ${txToDelete.description}`,
+        oldValue: `${txToDelete.type.toUpperCase()}: ${formatCurrency(txToDelete.amount)}`,
+        targetId: id,
+      });
+    }
 
     // Delete transaction from Supabase immediately & await
     if (isSupabaseActive || isSupabaseConfigured()) {
@@ -1688,7 +1807,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Settings
-  const updateSettings = (newSettings: Partial<AppSettings>) => {
+  const updateSettings = async (newSettings: Partial<AppSettings>): Promise<{ success: boolean; message: string }> => {
+    let updatedSettings: AppSettings = settings;
+
     setSettings(prev => {
       const cleanWa = newSettings.contactWa !== undefined ? normalizePhoneNumber(newSettings.contactWa) : prev.contactWa;
       const updated = {
@@ -1696,14 +1817,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...newSettings,
         ...(newSettings.contactWa !== undefined ? { contactWa: cleanWa } : {}),
       };
+      updatedSettings = updated;
       localStorage.setItem('patelki_settings', JSON.stringify(updated));
+
+      // Generate audit summary of what actually changed
+      const changes: string[] = [];
+      if (newSettings.monthlyFee !== undefined && newSettings.monthlyFee !== prev.monthlyFee) {
+        changes.push(`Tarif iuran bulanan diubah: Rp ${prev.monthlyFee.toLocaleString('id-ID')} ➔ Rp ${newSettings.monthlyFee.toLocaleString('id-ID')}`);
+      }
+      if (newSettings.initialBalance !== undefined && newSettings.initialBalance !== prev.initialBalance) {
+        changes.push(`Saldo awal kas diubah: Rp ${(prev.initialBalance || 0).toLocaleString('id-ID')} ➔ Rp ${newSettings.initialBalance.toLocaleString('id-ID')}`);
+      }
+      if (newSettings.contactWa !== undefined && cleanWa !== prev.contactWa) {
+        changes.push(`Nomor WA konfirmasi diubah: ${prev.contactWa || '-'} ➔ ${cleanWa}`);
+      }
+      if (newSettings.bendaharaName !== undefined && newSettings.bendaharaName !== prev.bendaharaName) {
+        changes.push(`Nama Bendahara DPC diubah: ${prev.bendaharaName || '-'} ➔ ${newSettings.bendaharaName}`);
+      }
+      if (newSettings.bendaharaNap !== undefined && newSettings.bendaharaNap !== prev.bendaharaNap) {
+        changes.push(`NAP Bendahara diubah: ${prev.bendaharaNap || '-'} ➔ ${newSettings.bendaharaNap}`);
+      }
+      if (newSettings.ketuaName !== undefined && newSettings.ketuaName !== prev.ketuaName) {
+        changes.push(`Nama Ketua DPC diubah: ${prev.ketuaName || '-'} ➔ ${newSettings.ketuaName}`);
+      }
+      if (newSettings.address !== undefined && newSettings.address !== prev.address) {
+        changes.push(`Alamat sekretariat DPC diperbarui`);
+      }
+      if (newSettings.contactEmail !== undefined && newSettings.contactEmail !== prev.contactEmail) {
+        changes.push(`Email resmi DPC diubah: ${prev.contactEmail || '-'} ➔ ${newSettings.contactEmail}`);
+      }
+
+      if (changes.length > 0) {
+        setTimeout(() => {
+          addActivityLog({
+            actorName: prev.bendaharaName ? `Bendahara DPC (${prev.bendaharaName})` : 'Bendahara DPC',
+            actorRole: 'bendahara',
+            category: 'settings',
+            action: 'update',
+            title: 'Perubahan Pengaturan & Parameter DPC',
+            description: changes.join('. '),
+            newValue: changes.join(', '),
+          });
+        }, 0);
+      }
+
       return updated;
     });
 
-    // Auto-sync settings to Supabase if configured
-    if (isSupabaseActive) {
-      syncUploadToSupabase().catch(console.error);
+    // Directly save to Supabase app_settings table without requiring full sync
+    if (isSupabaseActive || isSupabaseConfigured()) {
+      try {
+        const res = await saveSettingsToSupabase(updatedSettings);
+        if (!res.success) {
+          console.error('Failed saving settings to Supabase:', res.message);
+          return res;
+        }
+        return { success: true, message: 'Pengaturan berhasil disimpan!' };
+      } catch (err: any) {
+        console.error('Error saving settings to Supabase:', err);
+        return { success: false, message: err.message || 'Gagal menyimpan ke Supabase' };
+      }
     }
+
+    return { success: true, message: 'Pengaturan berhasil disimpan!' };
   };
 
   // Keep Bendahara name & NAP strictly synchronized with settings
@@ -2022,6 +2198,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bankAccounts,
         settings,
         notifications,
+        activityLogs,
+        addActivityLog,
+        clearActivityLogs,
         addMember,
         updateMember,
         deleteMember,

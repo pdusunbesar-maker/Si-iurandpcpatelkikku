@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.members (
     nama TEXT NOT NULL,
     gelar TEXT DEFAULT '',
     nap TEXT NOT NULL UNIQUE,
-    no_wa TEXT NOT NULL,
+    no_wa TEXT NOT NULL UNIQUE,
     instansi TEXT NOT NULL,
     jabatan TEXT DEFAULT '',
     status TEXT DEFAULT 'aktif' CHECK (status IN ('aktif', 'nonaktif')),
@@ -25,17 +25,17 @@ CREATE TABLE IF NOT EXISTS public.members (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. TABEL REKAP IURAN BULANAN (dues_records)
-CREATE TABLE IF NOT EXISTS public.dues_records (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-    member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
-    year INT NOT NULL,
-    month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
-    status TEXT DEFAULT 'unpaid' CHECK (status IN ('paid', 'pending', 'unpaid', 'inactive')),
-    payment_id TEXT,
-    amount NUMERIC DEFAULT 25000,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT unique_member_year_month UNIQUE(member_id, year, month)
+-- 2. TABEL REKENING BANK BENDAHARA (bank_accounts)
+CREATE TABLE IF NOT EXISTS public.bank_accounts (
+    id TEXT PRIMARY KEY,
+    bank_name TEXT NOT NULL,
+    account_number TEXT NOT NULL,
+    account_holder TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_primary BOOLEAN DEFAULT FALSE,
+    notes TEXT,
+    qris_url TEXT,
+    CONSTRAINT unique_bank_and_number UNIQUE (bank_name, account_number)
 );
 
 -- 3. TABEL PENGAJUAN / BUKTI PEMBAYARAN IURAN (payment_submissions)
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS public.payment_submissions (
     member_wa TEXT NOT NULL,
     member_instansi TEXT NOT NULL,
     months JSONB NOT NULL,
-    total_amount NUMERIC NOT NULL,
-    bank_account_id TEXT NOT NULL,
+    total_amount NUMERIC NOT NULL CHECK (total_amount > 0),
+    bank_account_id TEXT REFERENCES public.bank_accounts(id) ON DELETE SET NULL,
     bank_name TEXT NOT NULL,
     account_number TEXT NOT NULL,
     proof_url TEXT NOT NULL,
@@ -61,7 +61,20 @@ CREATE TABLE IF NOT EXISTS public.payment_submissions (
     notes TEXT
 );
 
--- 4. TABEL BUKU KAS / TRANSAKSI KAS (cash_transactions)
+-- 4. TABEL REKAP IURAN BULANAN (dues_records)
+CREATE TABLE IF NOT EXISTS public.dues_records (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
+    member_id TEXT NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+    year INT NOT NULL,
+    month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
+    status TEXT DEFAULT 'unpaid' CHECK (status IN ('paid', 'pending', 'unpaid', 'inactive')),
+    payment_id TEXT REFERENCES public.payment_submissions(id) ON DELETE SET NULL,
+    amount NUMERIC DEFAULT 30000 CHECK (amount >= 0),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_member_year_month UNIQUE(member_id, year, month)
+);
+
+-- 5. TABEL BUKU KAS / TRANSAKSI KAS (cash_transactions)
 CREATE TABLE IF NOT EXISTS public.cash_transactions (
     id TEXT PRIMARY KEY,
     date DATE NOT NULL,
@@ -69,21 +82,21 @@ CREATE TABLE IF NOT EXISTS public.cash_transactions (
     category TEXT NOT NULL,
     sub_category TEXT,
     source_or_recipient TEXT NOT NULL,
-    amount NUMERIC NOT NULL,
+    amount NUMERIC NOT NULL CHECK (amount > 0),
     description TEXT NOT NULL,
     proof_url TEXT,
-    related_payment_id TEXT,
+    related_payment_id TEXT REFERENCES public.payment_submissions(id) ON DELETE SET NULL,
     recorded_by TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. TABEL DONASI / INFAQ (donations)
+-- 6. TABEL DONASI / INFAQ (donations)
 CREATE TABLE IF NOT EXISTS public.donations (
     id TEXT PRIMARY KEY,
     date DATE NOT NULL,
     donor_name TEXT NOT NULL,
     donor_contact TEXT,
-    amount NUMERIC NOT NULL,
+    amount NUMERIC NOT NULL CHECK (amount >= 0),
     type TEXT DEFAULT 'uang' CHECK (type IN ('uang', 'barang', 'lainnya')),
     purpose TEXT NOT NULL,
     description TEXT,
@@ -91,15 +104,15 @@ CREATE TABLE IF NOT EXISTS public.donations (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. TABEL PROGRAM BAKTI SOSIAL (social_services)
+-- 7. TABEL PROGRAM BAKTI SOSIAL (social_services)
 CREATE TABLE IF NOT EXISTS public.social_services (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     date DATE NOT NULL,
     location TEXT NOT NULL,
     fund_source TEXT NOT NULL,
-    total_budget NUMERIC DEFAULT 0,
-    total_spent NUMERIC DEFAULT 0,
+    total_budget NUMERIC DEFAULT 0 CHECK (total_budget >= 0),
+    total_spent NUMERIC DEFAULT 0 CHECK (total_spent >= 0),
     beneficiaries TEXT NOT NULL,
     description TEXT,
     documentation_urls JSONB DEFAULT '[]'::JSONB,
@@ -107,26 +120,15 @@ CREATE TABLE IF NOT EXISTS public.social_services (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. TABEL REKENING BANK BENDAHARA (bank_accounts)
-CREATE TABLE IF NOT EXISTS public.bank_accounts (
-    id TEXT PRIMARY KEY,
-    bank_name TEXT NOT NULL,
-    account_number TEXT NOT NULL,
-    account_holder TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    is_primary BOOLEAN DEFAULT FALSE,
-    notes TEXT,
-    qris_url TEXT
-);
-
 -- 8. TABEL PENGATURAN APLIKASI (app_settings)
 CREATE TABLE IF NOT EXISTS public.app_settings (
     id TEXT PRIMARY KEY DEFAULT 'current_settings',
     organization_name TEXT NOT NULL,
     branch_name TEXT NOT NULL,
-    monthly_fee NUMERIC DEFAULT 25000,
-    start_year INT DEFAULT 2024,
-    end_year INT DEFAULT 2026,
+    monthly_fee NUMERIC DEFAULT 30000 CHECK (monthly_fee >= 0),
+    initial_balance NUMERIC DEFAULT 0,
+    start_year INT DEFAULT 2025,
+    end_year INT DEFAULT 2031,
     address TEXT,
     contact_wa TEXT,
     contact_email TEXT,
@@ -143,6 +145,9 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
     wa_template_rejected TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migrasi tambahan kolom & relasi aman jika tabel sudah ada sebelumnya
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS initial_balance NUMERIC DEFAULT 0;
 
 -- ==============================================================
 -- KEAMANAN & ROW LEVEL SECURITY (RLS)
@@ -182,8 +187,13 @@ CREATE POLICY "Allow anon all on bank_accounts" ON public.bank_accounts FOR ALL 
 DROP POLICY IF EXISTS "Allow anon all on app_settings" ON public.app_settings;
 CREATE POLICY "Allow anon all on app_settings" ON public.app_settings FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
--- Indeks performa
+-- Indeks performa & relasi Foreign Key
 CREATE INDEX IF NOT EXISTS idx_members_nap ON public.members(nap);
+CREATE INDEX IF NOT EXISTS idx_members_no_wa ON public.members(no_wa);
 CREATE INDEX IF NOT EXISTS idx_dues_member_year ON public.dues_records(member_id, year);
+CREATE INDEX IF NOT EXISTS idx_dues_payment_id ON public.dues_records(payment_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_member_id ON public.payment_submissions(member_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_bank_id ON public.payment_submissions(bank_account_id);
 CREATE INDEX IF NOT EXISTS idx_submissions_status ON public.payment_submissions(status);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.cash_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_transactions_related_payment ON public.cash_transactions(related_payment_id);

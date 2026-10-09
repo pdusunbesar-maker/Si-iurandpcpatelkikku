@@ -151,3 +151,42 @@ export interface AppSettings {
   waTemplateReminder: string;
   waTemplateRejected: string;
 }
+
+export type ActivityLogCategory =
+  | 'settings'
+  | 'transactions'
+  | 'dues'
+  | 'members'
+  | 'bank_accounts'
+  | 'auth'
+  | 'donations'
+  | 'social_services'
+  | 'general';
+
+export type ActivityActionType =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'approve'
+  | 'reject'
+  | 'login'
+  | 'logout'
+  | 'settle'
+  | 'waive'
+  | 'audit';
+
+export interface ActivityLog {
+  id: string;
+  timestamp: string; // ISO 8601 String
+  actorName: string; // e.g. 'Bendahara DPC (Nurul Handayani)'
+  actorRole: UserRole | 'system';
+  category: ActivityLogCategory;
+  action: ActivityActionType;
+  title: string;
+  description: string;
+  oldValue?: string;
+  newValue?: string;
+  ipAddress?: string;
+  targetId?: string;
+  metadata?: Record<string, any>;
+}

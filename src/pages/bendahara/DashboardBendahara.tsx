@@ -25,8 +25,10 @@ import {
   PieChart,
   BarChart3,
   Percent,
+  ShieldAlert,
 } from 'lucide-react';
 import { Member } from '../../types';
+import { DashboardTrendsChart } from '../../components/bendahara/DashboardTrendsChart';
 
 interface DashboardBendaharaProps {
   onNavigate: (page: string) => void;
@@ -504,6 +506,9 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
         </div>
       </div>
 
+      {/* Visual Analytics: Monthly Iuran Collection Trends & Active Member Growth (Recharts) */}
+      <DashboardTrendsChart onNavigate={onNavigate} />
+
       {/* Financial Bar Chart & Organization Distribution (100% Real-Time Integrated) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Income vs Expense Monthly Chart (Integrated from `transactions`) */}
@@ -691,7 +696,7 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
           <span className="p-1 bg-amber-400 text-slate-950 rounded-lg">⚡</span>
           Aksi Cepat Bendahara
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
           <button
             onClick={() => onNavigate('verifikasi')}
             className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
@@ -726,6 +731,24 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
             <FileSpreadsheet className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform mb-2" />
             <p className="text-xs font-extrabold text-slate-900">Laporan Transparansi</p>
             <p className="text-[10px] text-slate-500 mt-0.5">Export PDF / Excel resmi</p>
+          </button>
+
+          <button
+            onClick={() => onNavigate('anggaran-tahunan')}
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
+          >
+            <BarChart3 className="w-5 h-5 text-amber-500 group-hover:scale-110 transition-transform mb-2" />
+            <p className="text-xs font-extrabold text-slate-900">Anggaran Tahunan</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Komparasi RAPB vs Riil</p>
+          </button>
+
+          <button
+            onClick={() => onNavigate('activity-logs')}
+            className="p-4 bg-white rounded-2xl border border-slate-200 hover:border-emerald-500 hover:shadow-md transition-all text-left group cursor-pointer"
+          >
+            <ShieldAlert className="w-5 h-5 text-emerald-700 group-hover:scale-110 transition-transform mb-2" />
+            <p className="text-xs font-extrabold text-slate-900">Log Aktivitas & Audit</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">Jejak perubahan akun</p>
           </button>
         </div>
       </div>

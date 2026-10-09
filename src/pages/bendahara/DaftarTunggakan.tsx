@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Member, DuesRecord } from '../../types';
-import * as XLSX from 'xlsx';
 import {
   AlertCircle,
   Search,
@@ -17,9 +16,18 @@ import {
   DollarSign,
   ShieldCheck,
   Settings2,
+  Download,
+  FileText,
 } from 'lucide-react';
 import { WhatsAppModal } from '../../components/WhatsAppModal';
 import { ManageArrearsModal } from '../../components/ManageArrearsModal';
+import { AutoWhatsAppReminderModal } from '../../components/bendahara/AutoWhatsAppReminderModal';
+import { PatelkiLogo } from '../../components/PatelkiLogo';
+import {
+  exportDaftarTunggakanExcel,
+  exportDaftarTunggakanPDF,
+  ArrearsExportItem,
+} from '../../utils/exportFinancialReports';
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -45,6 +53,10 @@ export const DaftarTunggakan: React.FC = () => {
     phone: string;
     message: string;
   } | null>(null);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
+  const [isAutoReminderOpen, setIsAutoReminderOpen] = useState(false);
 
   // Calculate arrears list for active members up to current running calendar month/day
   const arrearsList = members
@@ -148,27 +160,76 @@ export const DaftarTunggakan: React.FC = () => {
   };
 
   const handleExportExcel = () => {
-    const exportData = arrearsList.map((item, index) => ({
-      No: index + 1,
-      'Nama Anggota': `${item.member.nama}, ${item.member.gelar || ''}`.trim(),
-      NAP: item.member.nap,
-      'No WhatsApp': item.member.noWa,
-      Instansi: item.member.instansi,
-      'Periode Tunggakan': item.unpaidMonthsStr,
-      'Jumlah Bulan Menunggak': item.unpaidCount,
-      'Total Tunggakan (Rp)': item.totalArrears,
-    }));
+    try {
+      setIsExportingExcel(true);
+      const exportItems: ArrearsExportItem[] = arrearsList.map((item, idx) => ({
+        no: idx + 1,
+        nama: item.member.nama,
+        gelar: item.member.gelar,
+        nap: item.member.nap,
+        noWa: item.member.noWa,
+        instansi: item.member.instansi,
+        unpaidMonthsStr: item.unpaidMonthsStr,
+        unpaidCount: item.unpaidCount,
+        totalArrears: item.totalArrears,
+      }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `Tunggakan_${selectedPeriod}`);
-    XLSX.writeFile(workbook, `Daftar_Tunggakan_Patelki_${selectedPeriod}_${now.toISOString().split('T')[0]}.xlsx`);
+      exportDaftarTunggakanExcel(exportItems, activePeriodLabel, settings, totalArrearsAll);
+      setExportSuccessMessage('✓ File Excel laporan tunggakan berhasil diunduh ke perangkat Anda.');
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting Excel:', err);
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    try {
+      setIsExportingPdf(true);
+      const exportItems: ArrearsExportItem[] = arrearsList.map((item, idx) => ({
+        no: idx + 1,
+        nama: item.member.nama,
+        gelar: item.member.gelar,
+        nap: item.member.nap,
+        noWa: item.member.noWa,
+        instansi: item.member.instansi,
+        unpaidMonthsStr: item.unpaidMonthsStr,
+        unpaidCount: item.unpaidCount,
+        totalArrears: item.totalArrears,
+      }));
+
+      exportDaftarTunggakanPDF(exportItems, activePeriodLabel, settings, totalArrearsAll);
+      setExportSuccessMessage('✓ File PDF resmi laporan tunggakan berhasil diunduh ke perangkat Anda.');
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Toast Notification Banner for Downloads */}
+      {exportSuccessMessage && (
+        <div className="no-print p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl text-xs font-bold text-emerald-900 flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{exportSuccessMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportSuccessMessage(null)}
+            className="text-emerald-700 hover:text-emerald-900 font-black cursor-pointer text-sm px-2"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
@@ -187,7 +248,7 @@ export const DaftarTunggakan: React.FC = () => {
         </div>
 
         {/* Actions & Period Filter */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-1.5 shadow-xs">
             <Calendar className="w-4 h-4 text-amber-500 mr-2" />
             <select
@@ -206,28 +267,57 @@ export const DaftarTunggakan: React.FC = () => {
             </select>
           </div>
 
+          {/* Auto WhatsApp Reminder Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsAutoReminderOpen(true)}
+            disabled={arrearsList.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+            title="Picu pengingat WhatsApp otomatis untuk anggota menunggak menggunakan konfigurasi pengaturan"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Picu Pengingat WA ({arrearsList.length})</span>
+          </button>
+
+          {/* Export Excel Button */}
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+            disabled={isExportingExcel}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Download laporan tunggakan format Excel (.xlsx)"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            Export Excel
+            <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
           </button>
 
+          {/* Download PDF Button */}
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            disabled={isExportingPdf}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Download laporan tunggakan format PDF resmi (.pdf)"
+          >
+            <Download className="w-4 h-4" />
+            <span>{isExportingPdf ? 'Menyiapkan...' : 'Download PDF'}</span>
+          </button>
+
+          {/* Cetak / Print PDF Button */}
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-colors"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Cetak langsung dokumen ke printer atau simpan PDF melalui browser"
           >
             <Printer className="w-4 h-4" />
-            Cetak
+            <span>Cetak / Cetak PDF</span>
           </button>
         </div>
       </div>
 
       {/* Summary KPI Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="no-print grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-red-500 text-white p-5 rounded-2xl shadow-lg shadow-red-500/15 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-red-100 uppercase tracking-wider">
@@ -269,7 +359,7 @@ export const DaftarTunggakan: React.FC = () => {
       </div>
 
       {/* Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="no-print bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
         <div className="relative w-full sm:w-96">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
@@ -283,7 +373,7 @@ export const DaftarTunggakan: React.FC = () => {
       </div>
 
       {/* Arrears Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+      <div className="no-print bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-900 text-white font-black uppercase text-[11px] tracking-wider">
@@ -372,6 +462,101 @@ export const DaftarTunggakan: React.FC = () => {
         </div>
       </div>
 
+      {/* Official Printable Report Document for window.print() / Save-as-PDF */}
+      <div id="report-document" className="print-only hidden p-8 bg-white text-slate-900 font-sans">
+        {/* Kop Surat Resmi */}
+        <div className="border-b-4 border-double border-slate-900 pb-4 flex items-center gap-4">
+          <PatelkiLogo size={70} />
+          <div className="flex-1">
+            <h3 className="text-xs font-bold tracking-widest text-emerald-800 uppercase">
+              PERSATUAN AHLI TEKNOLOGI LABORATORIUM MEDIK INDONESIA (PATELKI)
+            </h3>
+            <h1 className="text-lg font-black text-slate-950 tracking-tight">
+              DEWAN PENGURUS CABANG KABUPATEN KAYONG UTARA
+            </h1>
+            <p className="text-[10px] text-slate-600 mt-0.5 leading-snug">
+              Sekretariat: {settings.address || 'Kabupaten Kayong Utara, Kalimantan Barat'} • WA: {settings.contactWa || '-'} • Email: {settings.contactEmail || '-'}
+            </p>
+          </div>
+        </div>
+
+        {/* Title */}
+        <div className="my-6 text-center">
+          <h2 className="text-base font-black tracking-wider text-slate-900 uppercase">
+            LAPORAN PENGAWASAN TUNGGAKAN IURAN ANGGOTA
+          </h2>
+          <p className="text-xs font-bold text-amber-700 mt-0.5 uppercase tracking-wider">
+            PERIODE: {activePeriodLabel}
+          </p>
+        </div>
+
+        {/* Summary Info Box */}
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs">
+          <span><strong>Total Anggota Menunggak:</strong> {arrearsList.length} Orang</span>
+          <span><strong>Tarif Iuran:</strong> {formatCurrency(settings.monthlyFee)} / bln</span>
+          <span className="text-red-700"><strong>Total Nominal Tunggakan:</strong> {formatCurrency(totalArrearsAll)}</span>
+        </div>
+
+        {/* Printable Table */}
+        <table className="w-full text-left text-xs border border-slate-300 border-collapse mb-6">
+          <thead className="bg-slate-100 font-bold text-slate-900 text-[11px]">
+            <tr className="border-b border-slate-300">
+              <th className="p-2 text-center border-r border-slate-300 w-10">No</th>
+              <th className="p-2 border-r border-slate-300">Nama Anggota</th>
+              <th className="p-2 border-r border-slate-300 text-center">NAP</th>
+              <th className="p-2 border-r border-slate-300">Instansi / Unit Kerja</th>
+              <th className="p-2 border-r border-slate-300">Periode Menunggak</th>
+              <th className="p-2 text-center border-r border-slate-300 w-16">Jml</th>
+              <th className="p-2 text-right">Total Tunggakan</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {arrearsList.map((item, idx) => (
+              <tr key={item.member.id} className="border-b border-slate-200">
+                <td className="p-2 text-center border-r border-slate-200">{idx + 1}</td>
+                <td className="p-2 font-bold border-r border-slate-200">
+                  {item.member.nama}{item.member.gelar ? ', ' + item.member.gelar : ''}
+                </td>
+                <td className="p-2 font-mono text-center border-r border-slate-200">{item.member.nap}</td>
+                <td className="p-2 border-r border-slate-200">{item.member.instansi}</td>
+                <td className="p-2 text-[11px] border-r border-slate-200">{item.unpaidMonthsStr}</td>
+                <td className="p-2 text-center border-r border-slate-200">{item.unpaidCount} Bln</td>
+                <td className="p-2 text-right font-mono font-bold text-red-700">{formatCurrency(item.totalArrears)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-slate-100 font-bold text-slate-900 border-t-2 border-slate-300">
+            <tr>
+              <td colSpan={3} className="p-2 text-center">TOTAL KESELURUHAN</td>
+              <td className="p-2">{arrearsList.length} Anggota</td>
+              <td className="p-2"></td>
+              <td className="p-2 text-center">{arrearsList.reduce((s, i) => s + i.unpaidCount, 0)} Bln</td>
+              <td className="p-2 text-right font-mono text-red-700 font-black">{formatCurrency(totalArrearsAll)}</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        {/* Signatures */}
+        <div className="flex justify-between items-start mt-8 text-xs pt-4">
+          <div className="text-center w-64">
+            <p>Mengetahui,</p>
+            <p className="font-bold">Ketua DPC PATELKI Kayong Utara</p>
+            <div className="h-16"></div>
+            <p className="font-black underline">{settings.ketuaName || '( ..................................................... )'}</p>
+            <p className="text-[10px] text-slate-500 font-mono">NAP: {settings.ketuaNap || '-'}</p>
+          </div>
+
+          <div className="text-center w-64">
+            <p>Sukadana, {currentCalendarDateStr}</p>
+            <p>Dibuat Oleh,</p>
+            <p className="font-bold">Bendahara DPC PATELKI Kayong Utara</p>
+            <div className="h-16"></div>
+            <p className="font-black underline">{settings.bendaharaName || '( ..................................................... )'}</p>
+            <p className="text-[10px] text-slate-500 font-mono">NAP: {settings.bendaharaNap || '-'}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Arrears Management Modal */}
       {selectedMemberForArrears && (
         <ManageArrearsModal
@@ -391,6 +576,15 @@ export const DaftarTunggakan: React.FC = () => {
           recipientPhone={waModalData.phone}
           defaultMessage={waModalData.message}
           title="Kirim Tagihan Tunggakan via WhatsApp"
+        />
+      )}
+
+      {/* Automated WhatsApp Reminder Modal (Configured via Settings) */}
+      {isAutoReminderOpen && (
+        <AutoWhatsAppReminderModal
+          isOpen={true}
+          onClose={() => setIsAutoReminderOpen(false)}
+          defaultPeriodYear={selectedPeriod === 'all' ? undefined : Number(selectedPeriod)}
         />
       )}
     </div>

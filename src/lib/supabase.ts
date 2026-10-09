@@ -572,7 +572,6 @@ export async function pushAllDataToSupabase(data: {
       organization_name: data.settings.organizationName,
       branch_name: data.settings.branchName,
       monthly_fee: data.settings.monthlyFee,
-      initial_balance: data.settings.initialBalance ?? 0,
       start_year: data.settings.startYear,
       end_year: data.settings.endYear,
       address: data.settings.address,
@@ -603,6 +602,52 @@ export async function pushAllDataToSupabase(data: {
       ? 'Gagal terhubung ke server Supabase. Periksa koneksi internet atau ketersediaan URL & API Key Supabase Anda.'
       : error.message || 'Terjadi kesalahan saat upload';
     return { success: false, message: `Gagal mengunggah data: ${msg}` };
+  }
+}
+
+/**
+ * Simpan / perbarui pengaturan aplikasi langsung ke tabel app_settings di Supabase
+ */
+export async function saveSettingsToSupabase(settings: AppSettings): Promise<{ success: boolean; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Supabase client belum dikonfigurasi!' };
+  }
+
+  try {
+    const payload = {
+      id: 'current_settings',
+      organization_name: settings.organizationName || 'Persatuan Ahli Teknologi Laboratorium Medik Indonesia',
+      branch_name: settings.branchName || 'DPC PATELKI Kabupaten Kayong Utara',
+      monthly_fee: Number(settings.monthlyFee) || 30000,
+      start_year: Number(settings.startYear) || 2025,
+      end_year: Number(settings.endYear) || 2031,
+      address: settings.address || '',
+      contact_wa: settings.contactWa || '',
+      contact_email: settings.contactEmail || '',
+      ketua_name: settings.ketuaName || '',
+      ketua_nap: settings.ketuaNap || '',
+      bendahara_name: settings.bendaharaName || '',
+      bendahara_nap: settings.bendaharaNap || '',
+      treasurer_username: settings.treasurerUsername || 'bendahara',
+      treasurer_password: settings.treasurerPassword || 'bendahara123',
+      categories_expense: settings.categoriesExpense || [],
+      categories_income: settings.categoriesIncome || [],
+      wa_template_approved: settings.waTemplateApproved || '',
+      wa_template_reminder: settings.waTemplateReminder || '',
+      wa_template_rejected: settings.waTemplateRejected || '',
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await client.from('app_settings').upsert(payload, { onConflict: 'id' });
+    if (error) {
+      console.error('Error saving app_settings to Supabase:', error);
+      return { success: false, message: error.message };
+    }
+    return { success: true, message: 'Pengaturan berhasil disimpan ke Supabase!' };
+  } catch (error: any) {
+    console.error('Exception saving app_settings to Supabase:', error);
+    return { success: false, message: error.message || 'Gagal menyimpan pengaturan' };
   }
 }
 

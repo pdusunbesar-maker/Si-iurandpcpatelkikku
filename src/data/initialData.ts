@@ -1,4 +1,4 @@
-import { Member, DuesRecord, PaymentSubmission, CashTransaction, Donation, SocialService, BankAccount, AppSettings, AppNotification } from '../types';
+import { Member, DuesRecord, PaymentSubmission, CashTransaction, Donation, SocialService, BankAccount, AppSettings, AppNotification, ActivityLog } from '../types';
 
 /**
  * Data Anggota PATELKI (Kosong secara default / Siap diisi data riil)
@@ -69,3 +69,53 @@ export const INITIAL_DONATIONS: Donation[] = [];
 export const INITIAL_SOCIAL_SERVICES: SocialService[] = [];
 
 export const INITIAL_NOTIFICATIONS: AppNotification[] = [];
+
+/**
+ * Log Aktivitas & Jejak Audit Awal DPC PATELKI Kayong Utara
+ */
+export const INITIAL_ACTIVITY_LOGS: ActivityLog[] = [
+  {
+    id: 'log-seed-1',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days ago
+    actorName: 'Sistem Organisasi PATELKI',
+    actorRole: 'system',
+    category: 'settings',
+    action: 'create',
+    title: 'Inisialisasi Sistem SI-IURAN PATELKI',
+    description: 'Konfigurasi awal parameter DPC Kabupaten Kayong Utara, struktur AD/ART, dan periode aktif 2025–2031.',
+    newValue: 'Tarif Iuran: Rp 30.000 / bln, Periode: 2025-2031',
+  },
+  {
+    id: 'log-seed-2',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
+    actorName: 'Bendahara DPC',
+    actorRole: 'bendahara',
+    category: 'bank_accounts',
+    action: 'update',
+    title: 'Verifikasi Rekening Bank Resmi',
+    description: 'Konfirmasi rekening penampungan iuran Bank Kalbar dan Bank BRI atas nama DPC PATELKI Kayong Utara.',
+    newValue: 'Bank Kalbar (5021-0899-2311) & BRI (0342-01-002891-53-4)',
+  },
+  {
+    id: 'log-seed-3',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(), // 18 hours ago
+    actorName: 'Bendahara DPC',
+    actorRole: 'bendahara',
+    category: 'auth',
+    action: 'login',
+    title: 'Autentikasi Login Bendahara',
+    description: 'Sesi login berhasil diverifikasi untuk akun Bendahara DPC Kayong Utara.',
+    ipAddress: '127.0.0.1 (Lokal)',
+  },
+  {
+    id: 'log-seed-4',
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
+    actorName: 'Bendahara DPC',
+    actorRole: 'bendahara',
+    category: 'general',
+    action: 'audit',
+    title: 'Pemeriksaan Integritas Database',
+    description: 'Audit sinkronisasi data master anggota, tabel iuran bulanan, dan buku kas organisasi.',
+    newValue: 'Status: 100% Sinkron & Bersih',
+  },
+];

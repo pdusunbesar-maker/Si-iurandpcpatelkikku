@@ -24,6 +24,9 @@ export const MatrixTahunan: React.FC = () => {
   } | null>(null);
 
   const years = [2025, 2026, 2027, 2028, 2029, 2030, 2031];
+  const now = new Date();
+  const currentCalendarYear = now.getFullYear();
+  const currentCalendarMonth = now.getMonth() + 1; // 1-12
 
   // Filtered members
   const filteredMembers = members.filter(m => {
@@ -35,10 +38,12 @@ export const MatrixTahunan: React.FC = () => {
     );
   });
 
-  // Calculate year stats for a member
+  // Calculate year stats for a member (handles both member object or string ID)
   const getMemberYearStat = (member: any, year: number) => {
+    const memberId = typeof member === 'object' && member !== null ? member.id : member;
+    const memberNap = typeof member === 'object' && member !== null ? member.nap : undefined;
     const records = duesRecords.filter(
-      d => (d.memberId === member.id || (member.nap && d.memberId === member.nap)) && d.year === year
+      d => (d.memberId === memberId || (memberNap && d.memberId === memberNap)) && d.year === year
     );
     const paidCount = records.filter(d => d.status === 'paid').length;
     const isInactive = records.length > 0 && records.every(d => d.status === 'inactive');
@@ -51,6 +56,39 @@ export const MatrixTahunan: React.FC = () => {
     };
   };
 
+  // Calculate dynamic arrears for member up to running calendar month
+  const getMemberArrears = (member: any) => {
+    if (member.status === 'nonaktif') {
+      return { arrears: 0, unpaidMonths: 0 };
+    }
+
+    const memberId = typeof member === 'object' && member !== null ? member.id : member;
+    const memberNap = typeof member === 'object' && member !== null ? member.nap : undefined;
+    const memberRecords = duesRecords.filter(
+      d => d.memberId === memberId || (memberNap && d.memberId === memberNap)
+    );
+
+    let arrears = 0;
+    let unpaidMonths = 0;
+    const startYr = settings.startYear || 2025;
+    const endYr = currentCalendarYear;
+
+    for (let yr = startYr; yr <= endYr; yr++) {
+      const maxMonth = yr === currentCalendarYear ? currentCalendarMonth : 12;
+      for (let mo = 1; mo <= maxMonth; mo++) {
+        const rec = memberRecords.find(d => d.year === yr && d.month === mo);
+        const status = rec?.status || 'unpaid';
+        const amount = rec?.amount || settings.monthlyFee;
+        if (status !== 'paid' && status !== 'inactive') {
+          arrears += amount;
+          unpaidMonths++;
+        }
+      }
+    }
+
+    return { arrears, unpaidMonths };
+  };
+
   // Export to Excel
   const handleExportExcel = () => {
     const exportData = filteredMembers.map(m => {
@@ -60,16 +98,13 @@ export const MatrixTahunan: React.FC = () => {
         Instansi: m.instansi,
       };
 
-      let totalArrears = 0;
+      const { arrears: totalArrears, unpaidMonths } = getMemberArrears(m);
       years.forEach(yr => {
         const stat = getMemberYearStat(m, yr);
         row[`Tahun ${yr}`] = stat.text;
-        // up to 2026 calculate arrears
-        if (yr <= 2026 && m.status === 'aktif') {
-          totalArrears += (12 - stat.paidCount) * settings.monthlyFee;
-        }
       });
 
+      row['Bulan Belum Lunas'] = unpaidMonths;
       row['Total Tunggakan (Rp)'] = totalArrears;
       return row;
     });
@@ -80,13 +115,13 @@ export const MatrixTahunan: React.FC = () => {
     XLSX.writeFile(workbook, `Rekap_Iuran_Tahunan_Patelki_2025_2031.xlsx`);
   };
 
-  const handleOpenWaBilling = (m: any, arrears: number) => {
+  const handleOpenWaBilling = (m: any, arrears: number, unpaidMonths: number) => {
     const msg = settings.waTemplateReminder
       .replace(/\[NAMA\]/g, `${m.nama}, ${m.gelar}`)
       .replace(/\[NAP\]/g, m.nap)
       .replace(/\[TANGGAL\]/g, new Date().toLocaleDateString('id-ID'))
       .replace(/\[NOMINAL\]/g, formatCurrency(arrears))
-      .replace(/\[PERIODE\]/g, 'Tahun 2025–2026');
+      .replace(/\[PERIODE\]/g, `${unpaidMonths} Bulan (${settings.startYear || 2025}–${currentCalendarYear})`);
 
     setWaTarget({
       name: `${m.nama}, ${m.gelar}`,
@@ -166,8 +201,8 @@ export const MatrixTahunan: React.FC = () => {
                     {yr}
                   </th>
                 ))}
-                <th className="py-4 px-4 text-right min-w-[120px] border-l border-slate-800">
-                  Tunggakan (25-26)
+                <th className="py-4 px-4 text-right min-w-[140px] border-l border-slate-800">
+                  Tunggakan Berjalan
                 </th>
                 <th className="py-4 px-4 text-center min-w-[90px] border-l border-slate-800 no-print">
                   Aksi
@@ -176,15 +211,8 @@ export const MatrixTahunan: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredMembers.map(m => {
-                // Calculate member arrears (2025 up to Oct 2026 = 22 months total)
-                const stat2025 = getMemberYearStat(m.id, 2025);
-                const stat2026 = getMemberYearStat(m.id, 2026);
-                const paidCount25_26 = stat2025.paidCount + stat2026.paidCount;
-                const totalBilledMonths = 22; // 12 in 2025 + 10 in 2026
-                const memberArrears =
-                  m.status === 'nonaktif'
-                    ? 0
-                    : Math.max((totalBilledMonths - paidCount25_26) * settings.monthlyFee, 0);
+                // Calculate dynamic arrears (berkurang otomatis saat iuran berstatus paid)
+                const { arrears: memberArrears, unpaidMonths } = getMemberArrears(m);
 
                 return (
                   <tr key={m.id} className="hover:bg-slate-50 transition-colors">
@@ -224,13 +252,20 @@ export const MatrixTahunan: React.FC = () => {
                     })}
 
                     {/* Total Arrears Amount */}
-                    <td className="py-3 px-4 text-right font-mono font-bold border-l border-slate-100">
+                    <td className="py-3 px-4 text-right font-mono border-l border-slate-100">
                       {memberArrears > 0 ? (
-                        <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded-md">
-                          {formatCurrency(memberArrears)}
-                        </span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded-md font-mono font-bold">
+                            {formatCurrency(memberArrears)}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-sans mt-0.5">
+                            {unpaidMonths} bln belum lunas
+                          </span>
+                        </div>
                       ) : (
-                        <span className="text-emerald-700 font-semibold">Lunas ✅</span>
+                        <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-md font-bold">
+                          Lunas ✅
+                        </span>
                       )}
                     </td>
 
@@ -239,7 +274,7 @@ export const MatrixTahunan: React.FC = () => {
                       {memberArrears > 0 && m.status === 'aktif' ? (
                         <button
                           type="button"
-                          onClick={() => handleOpenWaBilling(m, memberArrears)}
+                          onClick={() => handleOpenWaBilling(m, memberArrears, unpaidMonths)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer transition-transform active:scale-95"
                           title="Kirim Tagihan via WhatsApp"
                         >

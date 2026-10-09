@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { WhatsAppModal } from '../../components/WhatsAppModal';
+import { AutoWhatsAppReminderModal } from '../../components/bendahara/AutoWhatsAppReminderModal';
 import {
   MessageSquare,
   Send,
@@ -10,6 +11,10 @@ import {
   AlertCircle,
   Copy,
   Clock,
+  Sparkles,
+  Play,
+  ShieldCheck,
+  Phone,
 } from 'lucide-react';
 
 const MONTH_NAMES = [
@@ -39,6 +44,7 @@ export const WhatsAppBroadcast: React.FC = () => {
     phone: string;
     message: string;
   } | null>(null);
+  const [isAutoReminderOpen, setIsAutoReminderOpen] = useState(false);
 
   // Arrears targets
   const arrearsTargets = members
@@ -138,6 +144,37 @@ export const WhatsAppBroadcast: React.FC = () => {
       {activeTab === 'reminder' ? (
         /* Reminder Tab */
         <div className="space-y-4">
+          {/* Automated Reminder Trigger Card */}
+          <div className="bg-linear-to-r from-emerald-900 via-emerald-800 to-slate-900 text-white p-5 sm:p-6 rounded-3xl shadow-lg border border-emerald-700/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider">
+                  ⚡ Fitur Otomatisasi
+                </span>
+                <span className="text-xs text-emerald-200 font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  Konfigurasi Pengaturan Terhubung
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-white">
+                Picu Pengingat WhatsApp Otomatis Massal
+              </h3>
+              <p className="text-xs text-emerald-100/80 leading-relaxed max-w-2xl">
+                Kirim pesan pengingat tunggakan terformat secara instan ke <strong className="text-amber-300 font-mono">{arrearsTargets.length} anggota</strong> menggunakan template <code>waTemplateReminder</code> dan nomor resmi Bendahara (<span className="font-mono text-emerald-300">{formatPhoneDisplay(settings.contactWa) || 'Belum diatur'}</span>).
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsAutoReminderOpen(true)}
+              disabled={arrearsTargets.length === 0}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-amber-500/20 transition-all cursor-pointer active:scale-95 shrink-0 disabled:opacity-50"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              <span>Picu Pengingat Otomatis ({arrearsTargets.length})</span>
+            </button>
+          </div>
+
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div className="relative w-full sm:w-96">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -258,6 +295,14 @@ export const WhatsAppBroadcast: React.FC = () => {
           recipientPhone={selectedTarget.phone}
           defaultMessage={selectedTarget.message}
           title="Kirim Pesan WhatsApp DPC Patelki"
+        />
+      )}
+
+      {/* Automated WhatsApp Reminder Modal (Configured via Settings) */}
+      {isAutoReminderOpen && (
+        <AutoWhatsAppReminderModal
+          isOpen={true}
+          onClose={() => setIsAutoReminderOpen(false)}
         />
       )}
     </div>
