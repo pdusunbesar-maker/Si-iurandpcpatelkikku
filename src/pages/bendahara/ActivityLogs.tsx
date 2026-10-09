@@ -28,6 +28,7 @@ import { ActivityLog, ActivityLogCategory, ActivityActionType } from '../../type
 import {
   exportActivityLogsExcel,
   exportActivityLogsPDF,
+  exportActivityLogsCSV,
 } from '../../utils/exportFinancialReports';
 
 export const ActivityLogs: React.FC = () => {
@@ -139,6 +140,16 @@ export const ActivityLogs: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    try {
+      exportActivityLogsCSV(filteredLogs);
+      setExportSuccessMessage('✓ Berkas CSV Log Aktivitas berhasil diunduh.');
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting Activity Logs CSV:', err);
+    }
+  };
+
   // Helper for badges
   const getCategoryBadge = (category: ActivityLogCategory) => {
     switch (category) {
@@ -232,6 +243,18 @@ export const ActivityLogs: React.FC = () => {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
+          </button>
+
+          {/* Export CSV */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            disabled={filteredLogs.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+            title="Download log aktivitas format CSV (.csv)"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Export CSV</span>
           </button>
 
           {/* Download PDF */}

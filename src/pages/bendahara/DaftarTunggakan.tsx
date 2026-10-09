@@ -26,6 +26,7 @@ import { PatelkiLogo } from '../../components/PatelkiLogo';
 import {
   exportDaftarTunggakanExcel,
   exportDaftarTunggakanPDF,
+  exportDaftarTunggakanCSV,
   ArrearsExportItem,
 } from '../../utils/exportFinancialReports';
 
@@ -209,6 +210,28 @@ export const DaftarTunggakan: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    try {
+      const exportItems: ArrearsExportItem[] = arrearsList.map((item, idx) => ({
+        no: idx + 1,
+        nama: item.member.nama,
+        gelar: item.member.gelar,
+        nap: item.member.nap,
+        noWa: item.member.noWa,
+        instansi: item.member.instansi,
+        unpaidMonthsStr: item.unpaidMonthsStr,
+        unpaidCount: item.unpaidCount,
+        totalArrears: item.totalArrears,
+      }));
+
+      exportDaftarTunggakanCSV(exportItems, activePeriodLabel);
+      setExportSuccessMessage('✓ File CSV laporan tunggakan berhasil diunduh ke perangkat Anda.');
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting CSV:', err);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Toast Notification Banner for Downloads */}
@@ -289,6 +312,17 @@ export const DaftarTunggakan: React.FC = () => {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
+          </button>
+
+          {/* Export CSV Button */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Download laporan tunggakan format CSV (.csv)"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Export CSV</span>
           </button>
 
           {/* Download PDF Button */}

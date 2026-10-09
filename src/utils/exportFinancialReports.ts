@@ -1140,3 +1140,97 @@ export const exportBudgetReportPDF = (
   doc.save(`Laporan_Anggaran_Tahunan_Patelki_${year}.pdf`);
 };
 
+/**
+ * Export Daftar Tunggakan to CSV
+ */
+export const exportDaftarTunggakanCSV = (
+  items: ArrearsExportItem[],
+  periodLabel: string
+) => {
+  const data = items.map((item, idx) => ({
+    No: idx + 1,
+    'Nama Anggota': `${item.nama}${item.gelar ? ', ' + item.gelar : ''}`.trim(),
+    NAP: item.nap,
+    'No. WhatsApp': item.noWa || '-',
+    'Instansi / Unit Kerja': item.instansi || '-',
+    'Rincian Bulan Menunggak': item.unpaidMonthsStr,
+    'Jumlah Bulan': item.unpaidCount,
+    'Total Tunggakan (Rp)': item.totalArrears,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Daftar Tunggakan');
+  XLSX.writeFile(wb, `Laporan_Tunggakan_Patelki_${periodLabel.replace(/\s+/g, '_')}.csv`, { bookType: 'csv' });
+};
+
+/**
+ * Export Rekapitulasi Iuran to CSV
+ */
+export const exportRekapitulasiIuranCSV = (
+  breakdown: MonthlyRecapExportItem[],
+  year: number
+) => {
+  const data = breakdown.map(item => ({
+    'Bulan': item.name,
+    'Anggota Lunas': item.paidCount,
+    'Anggota Menunggak': item.unpaidCount,
+    'Menunggu Verifikasi': item.pendingCount,
+    'Potensi Iuran (Rp)': item.potential,
+    'Realisasi Kas (Rp)': item.collected,
+    'Sisa Piutang (Rp)': item.arrears,
+    'Kepatuhan (%)': `${item.compliance}%`,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Rekapitulasi Iuran');
+  XLSX.writeFile(wb, `Rekapitulasi_Iuran_Patelki_${year}.csv`, { bookType: 'csv' });
+};
+
+/**
+ * Export Activity Logs to CSV
+ */
+export const exportActivityLogsCSV = (
+  logs: ActivityLog[]
+) => {
+  const data = logs.map((log, idx) => ({
+    No: idx + 1,
+    'Waktu': log.timestamp,
+    'Pelaku': log.actorName,
+    'Peran': log.actorRole,
+    'Kategori': log.category,
+    'Aksi / Keterangan': log.action,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Log Aktivitas');
+  XLSX.writeFile(wb, `Log_Aktivitas_Audit_Patelki.csv`, { bookType: 'csv' });
+};
+
+/**
+ * Export Annual Budget Report to CSV
+ */
+export const exportBudgetReportCSV = (
+  items: BudgetItemExport[],
+  year: number
+) => {
+  const data = items.map((item, idx) => ({
+    No: idx + 1,
+    Tipe: item.type === 'income' ? 'Pendapatan' : 'Belanja',
+    'Pos Kategori Anggaran': item.category,
+    'Pagu Rencana (Rp)': item.budgetAmount,
+    'Realisasi Riil (Rp)': item.actualAmount,
+    'Selisih (Deviasi) (Rp)': item.varianceAmount,
+    'Serapan (%)': `${item.percentage.toFixed(1)}%`,
+    Status: item.status,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, 'Anggaran Tahunan');
+  XLSX.writeFile(wb, `Laporan_Anggaran_Tahunan_Patelki_${year}.csv`, { bookType: 'csv' });
+};
+
+

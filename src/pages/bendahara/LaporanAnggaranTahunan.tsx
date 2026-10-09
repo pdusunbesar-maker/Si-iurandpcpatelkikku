@@ -46,6 +46,7 @@ import { PatelkiLogo } from '../../components/PatelkiLogo';
 import {
   exportBudgetReportExcel,
   exportBudgetReportPDF,
+  exportBudgetReportCSV,
   BudgetItemExport,
 } from '../../utils/exportFinancialReports';
 
@@ -489,6 +490,27 @@ export const LaporanAnggaranTahunan: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    try {
+      const exportData: BudgetItemExport[] = budgetItems.map((item, idx) => ({
+        no: idx + 1,
+        type: item.type,
+        category: item.category,
+        budgetAmount: item.budgetAmount,
+        actualAmount: item.actualAmount,
+        varianceAmount: item.varianceAmount,
+        percentage: item.percentage,
+        status: item.status,
+      }));
+
+      exportBudgetReportCSV(exportData, selectedYear);
+      setExportSuccessMessage(`✓ Berkas CSV Laporan Anggaran ${selectedYear} berhasil diunduh.`);
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting Budget CSV:', err);
+    }
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
       {/* Toast Notification */}
@@ -564,6 +586,17 @@ export const LaporanAnggaranTahunan: React.FC = () => {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
+          </button>
+
+          {/* Export CSV */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Download laporan anggaran ke CSV (.csv)"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Export CSV</span>
           </button>
 
           {/* Download PDF */}

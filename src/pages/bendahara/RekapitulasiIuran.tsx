@@ -15,6 +15,7 @@ import { PatelkiLogo } from '../../components/PatelkiLogo';
 import {
   exportRekapitulasiIuranExcel,
   exportRekapitulasiIuranPDF,
+  exportRekapitulasiIuranCSV,
 } from '../../utils/exportFinancialReports';
 
 const MONTH_NAMES = [
@@ -105,6 +106,16 @@ export const RekapitulasiIuran: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    try {
+      exportRekapitulasiIuranCSV(monthlyBreakdown, selectedYear);
+      setExportSuccessMessage(`✓ File CSV Rekapitulasi Iuran Tahun ${selectedYear} berhasil diunduh.`);
+      setTimeout(() => setExportSuccessMessage(null), 3500);
+    } catch (err) {
+      console.error('Error exporting CSV:', err);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Toast Notification Banner for Downloads */}
@@ -167,6 +178,17 @@ export const RekapitulasiIuran: React.FC = () => {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>{isExportingExcel ? 'Mengunduh...' : 'Export Excel'}</span>
+          </button>
+
+          {/* Export CSV Button */}
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Download rekapitulasi iuran format CSV (.csv)"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Export CSV</span>
           </button>
 
           {/* Download PDF Button */}
