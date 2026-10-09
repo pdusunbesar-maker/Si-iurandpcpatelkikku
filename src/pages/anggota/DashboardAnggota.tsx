@@ -30,7 +30,15 @@ const MONTH_NAMES = [
 ];
 
 export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }) => {
-  const { currentMember, duesRecords, paymentSubmissions, settings, formatCurrency } = useApp();
+  const {
+    currentMember,
+    duesRecords,
+    paymentSubmissions,
+    notifications,
+    markNotificationAsRead,
+    settings,
+    formatCurrency,
+  } = useApp();
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentSubmission | null>(null);
 
   const now = new Date();
@@ -40,6 +48,17 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
   if (!currentMember) {
     return <div className="p-8 text-center text-slate-500">Anggota tidak ditemukan.</div>;
   }
+
+  // Unread notifications for current member
+  const myNotifications = notifications.filter(
+    n =>
+      (n.recipientId === currentMember.id ||
+        n.recipientId === currentMember.nap ||
+        n.recipientId === 'all') &&
+      !n.isRead
+  );
+
+  const latestSuccessNotif = myNotifications.find(n => n.type === 'success');
 
   // Member dues analysis
   const memberDues2026 = duesRecords.filter(
@@ -71,6 +90,52 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+      {/* Real-time In-App Notification Alert / Toast Banner for Verified Payments */}
+      {myNotifications.length > 0 && (
+        <div className="bg-linear-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 sm:p-5 rounded-3xl shadow-lg border border-emerald-400/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-bounce-subtle">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-6 h-6 text-amber-300 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm sm:text-base">
+                  {myNotifications[0].title}
+                </span>
+                <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] rounded-full uppercase">
+                  Baru
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-emerald-100 mt-0.5 leading-relaxed">
+                {myNotifications[0].message}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {myNotifications[0].link && (
+              <button
+                type="button"
+                onClick={() => {
+                  markNotificationAsRead(myNotifications[0].id);
+                  onNavigate(myNotifications[0].link!);
+                }}
+                className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black rounded-xl shadow-md transition-all cursor-pointer"
+              >
+                Lihat Detail →
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => markNotificationAsRead(myNotifications[0].id)}
+              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-all cursor-pointer"
+            >
+              Tandai Dibaca
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Hero Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-emerald-900 via-emerald-800 to-slate-900 text-white p-6 sm:p-8 shadow-xl border border-emerald-700/40">
         <div className="absolute -right-10 -bottom-10 w-80 h-80 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />

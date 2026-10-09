@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDuesData } from '../../hooks/useDuesData';
 import {
   BarChart3,
   Calendar,
@@ -24,54 +25,24 @@ const MONTH_NAMES = [
 ];
 
 export const RekapitulasiIuran: React.FC = () => {
-  const { members, duesRecords, settings, formatCurrency } = useApp();
   const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const {
+    members,
+    duesRecords,
+    settings,
+    formatCurrency,
+    activeMembers,
+    activeCount,
+    monthlyBreakdown,
+    yearTotalPotential,
+    yearTotalCollected,
+    yearTotalArrears,
+    yearAverageCompliance,
+  } = useDuesData(selectedYear);
+
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
-
-  const activeMembers = members.filter(m => m.status === 'aktif');
-  const activeCount = activeMembers.length;
-
-  // Monthly stats breakdown for the selected year
-  const monthlyBreakdown = MONTH_NAMES.map((name, index) => {
-    const monthNum = index + 1;
-    const records = duesRecords.filter(d => {
-      if (d.year !== selectedYear || d.month !== monthNum) return false;
-      return activeMembers.some(
-        am => am.id === d.memberId || am.nap === d.memberId || d.memberId === am.id || d.memberId === am.nap
-      );
-    });
-
-    const paidRecords = records.filter(d => d.status === 'paid');
-    const unpaidRecords = records.filter(d => d.status === 'unpaid');
-    const pendingRecords = records.filter(d => d.status === 'pending');
-
-    const potential = activeCount * settings.monthlyFee;
-    const collected = paidRecords.length * settings.monthlyFee;
-    const pending = pendingRecords.length * settings.monthlyFee;
-    const arrears = unpaidRecords.length * settings.monthlyFee;
-    const compliance = activeCount > 0 ? Math.round((paidRecords.length / activeCount) * 100) : 0;
-
-    return {
-      monthNum,
-      name,
-      paidCount: paidRecords.length,
-      unpaidCount: unpaidRecords.length,
-      pendingCount: pendingRecords.length,
-      potential,
-      collected,
-      pending,
-      arrears,
-      compliance,
-    };
-  });
-
-  const yearTotalPotential = monthlyBreakdown.reduce((sum, m) => sum + m.potential, 0);
-  const yearTotalCollected = monthlyBreakdown.reduce((sum, m) => sum + m.collected, 0);
-  const yearTotalArrears = monthlyBreakdown.reduce((sum, m) => sum + m.arrears, 0);
-  const yearAverageCompliance =
-    monthlyBreakdown.reduce((sum, m) => sum + m.compliance, 0) / (monthlyBreakdown.length || 1);
 
   const handleExportExcel = () => {
     try {

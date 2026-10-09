@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDuesData } from '../../hooks/useDuesData';
 import * as XLSX from 'xlsx';
 import {
   CalendarDays,
@@ -14,7 +15,7 @@ import {
 import { WhatsAppModal } from '../../components/WhatsAppModal';
 
 export const MatrixTahunan: React.FC = () => {
-  const { members, duesRecords, settings, formatCurrency } = useApp();
+  const { members, duesRecords, settings, formatCurrency, getMemberRecords } = useDuesData();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [waTarget, setWaTarget] = useState<{
@@ -38,13 +39,9 @@ export const MatrixTahunan: React.FC = () => {
     );
   });
 
-  // Calculate year stats for a member (handles both member object or string ID)
+  // Calculate year stats for a member using unified getMemberRecords
   const getMemberYearStat = (member: any, year: number) => {
-    const memberId = typeof member === 'object' && member !== null ? member.id : member;
-    const memberNap = typeof member === 'object' && member !== null ? member.nap : undefined;
-    const records = duesRecords.filter(
-      d => (d.memberId === memberId || (memberNap && d.memberId === memberNap)) && d.year === year
-    );
+    const records = getMemberRecords(member, year);
     const paidCount = records.filter(d => d.status === 'paid').length;
     const isInactive = records.length > 0 && records.every(d => d.status === 'inactive');
 
@@ -62,11 +59,7 @@ export const MatrixTahunan: React.FC = () => {
       return { arrears: 0, unpaidMonths: 0 };
     }
 
-    const memberId = typeof member === 'object' && member !== null ? member.id : member;
-    const memberNap = typeof member === 'object' && member !== null ? member.nap : undefined;
-    const memberRecords = duesRecords.filter(
-      d => d.memberId === memberId || (memberNap && d.memberId === memberNap)
-    );
+    const memberRecords = getMemberRecords(member, currentCalendarYear); // or all periods
 
     let arrears = 0;
     let unpaidMonths = 0;
@@ -76,11 +69,10 @@ export const MatrixTahunan: React.FC = () => {
     for (let yr = startYr; yr <= endYr; yr++) {
       const maxMonth = yr === currentCalendarYear ? currentCalendarMonth : 12;
       for (let mo = 1; mo <= maxMonth; mo++) {
-        const rec = memberRecords.find(d => d.year === yr && d.month === mo);
+        const rec = duesRecords.find(d => (d.memberId === member.id || (member.nap && d.memberId === member.nap)) && d.year === yr && d.month === mo);
         const status = rec?.status || 'unpaid';
-        const amount = rec?.amount || settings.monthlyFee;
-        if (status !== 'paid' && status !== 'inactive') {
-          arrears += amount;
+        if (status === 'unpaid') {
+          arrears += rec?.amount || settings.monthlyFee;
           unpaidMonths++;
         }
       }

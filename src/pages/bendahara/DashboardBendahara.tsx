@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDuesData } from '../../hooks/useDuesData';
 import {
   Wallet,
   ArrowDownLeft,
@@ -115,6 +116,17 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
   const currentMonthName = MONTH_NAMES[now.getMonth()];
 
   const [chartYear, setChartYear] = useState<number>(currentYear);
+  const duesDataSync = useDuesData(chartYear);
+
+  // Month-over-Month Growth Calculation for 'Analisis Tren Iuran' summary card
+  const monthlyBreakdownSync = duesDataSync.monthlyBreakdown;
+  const currentMonthStats = monthlyBreakdownSync[currentMonth - 1] || { collected: 0, compliance: 0, paidCount: 0 };
+  const prevMonthStats = currentMonth > 1 ? monthlyBreakdownSync[currentMonth - 2] : { collected: 0, compliance: 0, paidCount: 0 };
+  
+  const growthCollectedDiff = currentMonthStats.collected - (prevMonthStats?.collected || 0);
+  const growthPercentage = (prevMonthStats?.collected || 0) > 0
+    ? Math.round(((currentMonthStats.collected - prevMonthStats.collected) / prevMonthStats.collected) * 100)
+    : (currentMonthStats.collected > 0 ? 100 : 0);
 
   const activeMembers = members.filter(m => m.status === 'aktif');
   const activeCount = activeMembers.length;
@@ -641,6 +653,47 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
             <span>ℹ️ Klik tombol "Jalankan Audit Otomatis" untuk memulai pengecekan konsistensi data.</span>
           </div>
         )}
+      </div>
+
+      {/* Analisis Tren Iuran Summary Card using sync hook */}
+      <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-emerald-950 rounded-3xl p-6 sm:p-7 text-white shadow-xl border border-emerald-700/40 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -left-10 -bottom-10 w-60 h-60 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider">
+              <TrendingUp className="w-3.5 h-3.5" />
+              Analisis Tren Iuran & Pertumbuhan Bulan ke Bulan
+            </div>
+            <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+              Perbandingan Kolektibilitas {currentMonthName} {chartYear} vs Bulan Sebelumnya
+            </h3>
+            <p className="text-xs sm:text-sm text-emerald-100/90 max-w-2xl leading-relaxed">
+              Data tersinkronisasi langsung dari hook `useDuesData` untuk memantau persentase pertumbuhan pembayaran iuran anggota secara real-time.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            {/* Growth Stat Badge */}
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/20 text-center sm:text-left min-w-[200px]">
+              <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider block">
+                Pertumbuhan Bulan Ini
+              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-2xl font-black font-mono ${growthPercentage >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {growthPercentage >= 0 ? `+${growthPercentage}%` : `${growthPercentage}%`}
+                </span>
+                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${growthPercentage >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-red-500/20 text-red-300'}`}>
+                  {growthCollectedDiff >= 0 ? `+${formatCurrency(growthCollectedDiff)}` : formatCurrency(growthCollectedDiff)}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-300 mt-1 block font-mono">
+                Terkumpul: {formatCurrency(currentMonthStats.collected)} ({currentMonthStats.paidCount} ATLM Lunas)
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Visual Analytics: Monthly Iuran Collection Trends & Active Member Growth (Recharts) */}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDuesData } from '../../hooks/useDuesData';
 import { Member } from '../../types';
 import * as XLSX from 'xlsx';
 import {
@@ -22,9 +23,22 @@ import { ManageArrearsModal } from '../../components/ManageArrearsModal';
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export const MatrixIuran: React.FC = () => {
-  const { members, duesRecords, settings, updateDuesStatus, formatCurrency } = useApp();
-
   const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const {
+    members,
+    duesRecords,
+    settings,
+    updateDuesStatus,
+    formatCurrency,
+    activeMembers,
+    getMemberRecords,
+    getDuesRecordForMonth,
+    yearTotalPotential,
+    yearTotalCollected,
+    yearTotalPending,
+    yearTotalArrears,
+  } = useDuesData(selectedYear);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'semua' | 'lunas' | 'tunggakan' | 'pending'>('semua');
   const [instansiFilter, setInstansiFilter] = useState('semua');
@@ -52,8 +66,8 @@ export const MatrixIuran: React.FC = () => {
 
     const matchInstansi = instansiFilter === 'semua' || m.instansi === instansiFilter;
 
-    // Check dues status for member in selectedYear
-    const memberDues = duesRecords.filter(d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear);
+    // Check dues status for member in selectedYear using unified helper
+    const memberDues = getMemberRecords(m, selectedYear);
     const paidCount = memberDues.filter(d => d.status === 'paid').length;
     const hasPending = memberDues.some(d => d.status === 'pending');
     const hasUnpaid = memberDues.some(d => d.status === 'unpaid');
@@ -66,12 +80,11 @@ export const MatrixIuran: React.FC = () => {
     return matchSearch && matchInstansi && matchStatus;
   });
 
-  // Calculate year totals
-  const totalPotential = members.filter(m => m.status === 'aktif').length * 12 * settings.monthlyFee;
-  const yearRecords = duesRecords.filter(d => d.year === selectedYear);
-  const totalCollected = yearRecords.filter(d => d.status === 'paid').length * settings.monthlyFee;
-  const totalPending = yearRecords.filter(d => d.status === 'pending').length * settings.monthlyFee;
-  const totalUnpaid = yearRecords.filter(d => d.status === 'unpaid').length * settings.monthlyFee;
+  // Calculate year totals using unified hook values
+  const totalPotential = yearTotalPotential;
+  const totalCollected = yearTotalCollected;
+  const totalPending = yearTotalPending;
+  const totalUnpaid = yearTotalArrears;
 
   // Export Matrix to Excel
   const handleExportExcel = () => {
@@ -84,9 +97,7 @@ export const MatrixIuran: React.FC = () => {
 
       let memberTotalPaid = 0;
       for (let month = 1; month <= 12; month++) {
-        const record = duesRecords.find(
-          d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear && d.month === month
-        );
+        const record = getDuesRecordForMonth(m, selectedYear, month);
         const status = record?.status || 'unpaid';
         row[MONTH_SHORT[month - 1]] =
           status === 'paid' ? 'Lunas' : status === 'pending' ? 'Verifikasi' : status === 'inactive' ? 'Nonaktif' : 'Belum';
@@ -328,9 +339,7 @@ export const MatrixIuran: React.FC = () => {
 
                     {/* 12 Months Cells */}
                     {Array.from({ length: 12 }, (_, i) => i + 1).map(month => {
-                      const record = duesRecords.find(
-                        d => (d.memberId === m.id || (m.nap && d.memberId === m.nap)) && d.year === selectedYear && d.month === month
-                      );
+                      const record = getDuesRecordForMonth(m, selectedYear, month);
                       const status = record?.status || (m.status === 'nonaktif' ? 'inactive' : 'unpaid');
                       if (status === 'paid') memberTotalPaid += settings.monthlyFee;
 

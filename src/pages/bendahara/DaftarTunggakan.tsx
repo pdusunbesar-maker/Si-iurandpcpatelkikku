@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useDuesData } from '../../hooks/useDuesData';
 import { Member, DuesRecord } from '../../types';
 import {
   AlertCircle,
@@ -38,7 +39,7 @@ const MONTH_NAMES = [
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 export const DaftarTunggakan: React.FC = () => {
-  const { members, duesRecords, settings, formatCurrency } = useApp();
+  const { members, duesRecords, settings, formatCurrency, getArrearsList } = useDuesData();
 
   const now = new Date();
   const currentCalendarYear = now.getFullYear();
@@ -59,74 +60,37 @@ export const DaftarTunggakan: React.FC = () => {
   const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
   const [isAutoReminderOpen, setIsAutoReminderOpen] = useState(false);
 
-  // Calculate arrears list for active members up to current running calendar month/day
-  const arrearsList = members
-    .filter(m => m.status === 'aktif')
-    .map(member => {
-      const memberRecordsMap = new Map<string, DuesRecord>();
-      duesRecords.forEach(d => {
-        if (d.memberId === member.id || (member.nap && d.memberId === member.nap)) {
-          memberRecordsMap.set(`${d.year}-${d.month}`, d);
-        }
-      });
+  // Calculate arrears list using unified getArrearsList hook
+  const rawArrearsList = getArrearsList(selectedPeriod);
 
-      const unpaidRecords: { year: number; month: number; amount: number }[] = [];
-      let paidCount = 0;
-      let totalArrears = 0;
+  const arrearsList = rawArrearsList.map(item => {
+    const { member, unpaidRecords, paidCount, totalArrears } = item;
 
-      const startYr = selectedPeriod !== 'all' ? Number(selectedPeriod) : 2025;
-      const endYr = selectedPeriod !== 'all' ? Number(selectedPeriod) : currentCalendarYear;
-
-      for (let yr = startYr; yr <= endYr; yr++) {
-        const maxMonth = (yr === currentCalendarYear) ? currentCalendarMonth : (yr > currentCalendarYear ? 0 : 12);
-        for (let mo = 1; mo <= maxMonth; mo++) {
-          const key = `${yr}-${mo}`;
-          const rec = memberRecordsMap.get(key);
-
-          const status = rec?.status || 'unpaid';
-          const amount = rec?.amount || settings.monthlyFee;
-
-          if (status === 'paid') {
-            paidCount++;
-          } else if (status === 'pending') {
-            // Pending verification
-          } else if (status === 'inactive') {
-            // Exempted
-          } else {
-            // Unpaid arrears
-            unpaidRecords.push({ year: yr, month: mo, amount });
-            totalArrears += amount;
-          }
-        }
+    // Group unpaid months by year for clean readability
+    const yearsSet = Array.from(new Set(unpaidRecords.map(u => u.year))).sort((a, b) => a - b);
+    const yearSummaries = yearsSet.map(yr => {
+      const yrUnpaid = unpaidRecords.filter(u => u.year === yr).sort((a, b) => a.month - b.month);
+      if (yrUnpaid.length === 12) {
+        return `${yr} (12 Bln Penuh)`;
       }
+      if (yrUnpaid.length > 1) {
+        const first = MONTH_SHORT[yrUnpaid[0].month - 1];
+        const last = MONTH_SHORT[yrUnpaid[yrUnpaid.length - 1].month - 1];
+        return `${first}–${last} ${yr} (${yrUnpaid.length} bln)`;
+      }
+      return `${MONTH_SHORT[yrUnpaid[0].month - 1]} ${yr}`;
+    });
 
-      // Group unpaid months by year for clean readability e.g. "2025 (12 bln), Jan–Okt 2026 (10 bln)"
-      const yearsSet = Array.from(new Set(unpaidRecords.map(u => u.year))).sort((a, b) => a - b);
-      const yearSummaries = yearsSet.map(yr => {
-        const yrUnpaid = unpaidRecords.filter(u => u.year === yr).sort((a, b) => a.month - b.month);
-        if (yrUnpaid.length === 12) {
-          return `${yr} (12 Bln Penuh)`;
-        }
-        if (yrUnpaid.length > 1) {
-          const first = MONTH_SHORT[yrUnpaid[0].month - 1];
-          const last = MONTH_SHORT[yrUnpaid[yrUnpaid.length - 1].month - 1];
-          return `${first}–${last} ${yr} (${yrUnpaid.length} bln)`;
-        }
-        return `${MONTH_SHORT[yrUnpaid[0].month - 1]} ${yr}`;
-      });
+    const monthNamesStr = yearSummaries.join(', ') || 'Tidak ada';
 
-      const monthNamesStr = yearSummaries.join(', ') || 'Tidak ada';
-
-      return {
-        member,
-        unpaidCount: unpaidRecords.length,
-        unpaidMonthsStr: monthNamesStr,
-        totalArrears,
-        paidCount,
-      };
-    })
-    .filter(item => item.totalArrears > 0)
-    .sort((a, b) => b.totalArrears - a.totalArrears);
+    return {
+      member,
+      unpaidCount: unpaidRecords.length,
+      unpaidMonthsStr: monthNamesStr,
+      totalArrears,
+      paidCount,
+    };
+  }).sort((a, b) => b.totalArrears - a.totalArrears);
 
   // Search filtered
   const filteredArrears = arrearsList.filter(item => {

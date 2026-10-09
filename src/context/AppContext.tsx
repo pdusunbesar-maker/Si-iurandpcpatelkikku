@@ -202,12 +202,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [duesRecords, setDuesRecords] = useState<DuesRecord[]>(() => {
     const saved = localStorage.getItem('patelki_dues');
-    if (!saved) return [];
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return [];
+    let dues: DuesRecord[] = [];
+    if (saved) {
+      try {
+        dues = JSON.parse(saved);
+      } catch {
+        dues = [];
+      }
     }
+    // Auto-heal / sync with approved payment submissions on init
+    const savedSubs = localStorage.getItem('patelki_submissions');
+    const savedMembers = localStorage.getItem('patelki_members');
+    if (savedSubs && savedMembers) {
+      try {
+        const subs: PaymentSubmission[] = JSON.parse(savedSubs);
+        const mems: Member[] = JSON.parse(savedMembers);
+        subs.forEach(sub => {
+          if (sub.status === 'approved') {
+            const member = mems.find(m => m.id === sub.memberId || m.nap === sub.memberNap || m.nap === sub.memberId);
+            const resolvedId = member?.id || sub.memberId;
+            sub.months.forEach(m => {
+              const idx = dues.findIndex(d =>
+                (d.memberId === resolvedId || (member && (d.memberId === member.id || d.memberId === member.nap))) &&
+                d.year === m.year &&
+                d.month === m.month
+              );
+              if (idx >= 0) {
+                dues[idx] = {
+                  ...dues[idx],
+                  status: 'paid',
+                  paymentId: sub.id,
+                };
+              } else {
+                dues.push({
+                  memberId: resolvedId,
+                  year: m.year,
+                  month: m.month,
+                  status: 'paid',
+                  amount: 30000,
+                  paymentId: sub.id,
+                });
+              }
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Error syncing dues on init:', err);
+      }
+    }
+    return dues;
   });
 
   const [paymentSubmissions, setPaymentSubmissions] = useState<PaymentSubmission[]>(() => {
@@ -382,6 +425,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isInitialSyncDone.current = true;
     }
   }, []);
+
+  // Auto-sync approved payment submissions into duesRecords on change or mount
+  useEffect(() => {
+    if (paymentSubmissions.length === 0 || members.length === 0) return;
+    let hasChanges = false;
+    const nextDues = [...duesRecords];
+    const nowIso = new Date().toISOString().split('T')[0];
+
+    paymentSubmissions.forEach(sub => {
+      if (sub.status === 'approved') {
+        const member = members.find(m => m.id === sub.memberId || m.nap === sub.memberNap || m.nap === sub.memberId);
+        const resolvedId = member?.id || sub.memberId;
+        sub.months.forEach(m => {
+          const idx = nextDues.findIndex(d =>
+            (d.memberId === resolvedId || (member && (d.memberId === member.id || d.memberId === member.nap))) &&
+            d.year === m.year &&
+            d.month === m.month
+          );
+          if (idx >= 0) {
+            if (nextDues[idx].status !== 'paid' || nextDues[idx].paymentId !== sub.id) {
+              nextDues[idx] = {
+                ...nextDues[idx],
+                status: 'paid',
+                paymentId: sub.id,
+                updatedAt: nowIso,
+              };
+              hasChanges = true;
+            }
+          } else {
+            nextDues.push({
+              memberId: resolvedId,
+              year: m.year,
+              month: m.month,
+              status: 'paid',
+              amount: settings.monthlyFee || 30000,
+              paymentId: sub.id,
+              updatedAt: nowIso,
+            });
+            hasChanges = true;
+          }
+        });
+      }
+    });
+
+    if (hasChanges) {
+      setDuesRecords(nextDues);
+      localStorage.setItem('patelki_dues', JSON.stringify(nextDues));
+    }
+  }, [paymentSubmissions, members]);
 
   // Real-time sync subscription across users/devices - Single Source of Truth
   useEffect(() => {
