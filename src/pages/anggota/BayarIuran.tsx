@@ -59,6 +59,17 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
   const [notes, setNotes] = useState('');
   const [copiedBankId, setCopiedBankId] = useState<string | null>(null);
 
+  // Compression & Upload progress state
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionProgress, setCompressionProgress] = useState(0);
+  const [largeFileWarning, setLargeFileWarning] = useState<string | null>(null);
+  const [comparisonData, setComparisonData] = useState<{
+    originalSize: string;
+    compressedSize: string;
+    originalDim: string;
+    compressedDim: string;
+  } | null>(null);
+
   // Success screen state
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -104,19 +115,118 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
 
   const totalAmount = selectedMonthsList.length * settings.monthlyFee;
 
-  // Handle local image file upload preview
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = async (
+    file: File,
+    onProgress: (progress: number) => void
+  ): Promise<{
+    compressedUrl: string;
+    originalSize: string;
+    compressedSize: string;
+    originalDim: string;
+    compressedDim: string;
+  }> => {
+    return new Promise((resolve) => {
+      const originalSizeVal = file.size;
+      const originalSizeStr = (originalSizeVal / 1024).toFixed(1) + (originalSizeVal > 1024 * 1024 ? ' MB' : ' KB');
+
+      const reader = new FileReader();
+      onProgress(25);
+
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          onProgress(55);
+          const origWidth = img.width;
+          const origHeight = img.height;
+          const originalDimStr = `${origWidth} × ${origHeight} px`;
+
+          let targetWidth = origWidth;
+          let targetHeight = origHeight;
+          const MAX_WIDTH = 1024;
+
+          if (targetWidth > MAX_WIDTH) {
+            targetHeight = Math.round((targetHeight * MAX_WIDTH) / targetWidth);
+            targetWidth = MAX_WIDTH;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve({
+              compressedUrl: e.target?.result as string,
+              originalSize: originalSizeStr,
+              compressedSize: originalSizeStr,
+              originalDim: originalDimStr,
+              compressedDim: originalDimStr,
+            });
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          onProgress(85);
+
+          let quality = 0.85;
+          let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+          const getBase64Size = (b64: string) => {
+            const base64Str = b64.split(',')[1] || b64;
+            return Math.round((base64Str.length * 3) / 4);
+          };
+
+          while (getBase64Size(dataUrl) > 250 * 1024 && quality > 0.1) {
+            quality -= 0.1;
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          onProgress(100);
+          const compressedSizeBytes = getBase64Size(dataUrl);
+          const compressedSizeStr = (compressedSizeBytes / 1024).toFixed(1) + ' KB';
+          const compressedDimStr = `${targetWidth} × ${targetHeight} px`;
+
+          resolve({
+            compressedUrl: dataUrl,
+            originalSize: originalSizeStr,
+            compressedSize: compressedSizeStr,
+            originalDim: originalDimStr,
+            compressedDim: compressedDimStr,
+          });
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Handle local image file upload with compression, warning, and progress
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setProofName(file.name);
-    const reader = new FileReader();
-    reader.onload = evt => {
-      if (evt.target?.result) {
-        setProofUrl(evt.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsCompressing(true);
+    setCompressionProgress(0);
+    setLargeFileWarning(null);
+
+    if (file.size > 1 * 1024 * 1024) {
+      setLargeFileWarning(
+        `⚠️ Peringatan: File berukuran ${(file.size / (1024 * 1024)).toFixed(2)} MB (>1MB). Sistem akan otomatis melakukan kompresi ke target maksimal 250KB dan lebar 1024px.`
+      );
+    }
+
+    const result = await compressImage(file, (p) => {
+      setCompressionProgress(p);
+    });
+
+    setProofUrl(result.compressedUrl);
+    setComparisonData({
+      originalSize: result.originalSize,
+      compressedSize: result.compressedSize,
+      originalDim: result.originalDim,
+      compressedDim: result.compressedDim,
+    });
+    setIsCompressing(false);
   };
 
   const handleCopyAccount = (bankId: string, accNum: string) => {
@@ -514,10 +624,69 @@ export const BayarIuran: React.FC<BayarIuranProps> = ({ onNavigate }) => {
                 Unggah Bukti Transfer & Konfirmasi
               </h2>
               <p className="text-xs text-slate-500">
-                Pastikan nama pengirim, nominal, dan tanggal terlihat jelas pada bukti transfer.
+                Pastikan nama pengirim, nominal, dan tanggal terlihat jelas pada bukti transfer (Maksimal 250KB, lebar maks 1024px).
               </p>
             </div>
           </div>
+
+          {/* Warning Banner if file > 1MB */}
+          {largeFileWarning && (
+            <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2.5 animate-in fade-in duration-200">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+              <span>{largeFileWarning}</span>
+            </div>
+          )}
+
+          {/* Progress Bar during compression + upload */}
+          {isCompressing && (
+            <div className="p-5 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs font-extrabold text-indigo-900">
+                <span>Mengompresi & Mengoptimalkan Bukti Transfer...</span>
+                <span className="font-mono">{compressionProgress}%</span>
+              </div>
+              <div className="w-full h-3 bg-indigo-200/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-indigo-600 transition-all duration-300 rounded-full"
+                  style={{ width: `${compressionProgress}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-indigo-700">
+                Menyesuaikan ukuran gambar agar di bawah 250KB & lebar maks 1024px...
+              </p>
+            </div>
+          )}
+
+          {/* Before-After Comparison Card */}
+          {comparisonData && !isCompressing && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2.5 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Hasil Kompresi Otomatis (Sesuai Standar DPC)
+                </span>
+                <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                  Optimum (&lt;250KB, &le;1024px)
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-white rounded-xl border border-emerald-200">
+                  <span className="text-[10px] text-slate-400 font-bold block">Ukuran Asli (Before)</span>
+                  <span className="font-mono font-bold text-slate-700">{comparisonData.originalSize}</span>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200">
+                  <span className="text-[10px] text-emerald-600 font-bold block">Ukuran Kompres (After)</span>
+                  <span className="font-mono font-black text-emerald-800">{comparisonData.compressedSize}</span>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200">
+                  <span className="text-[10px] text-slate-400 font-bold block">Dimensi Asli</span>
+                  <span className="font-mono font-bold text-slate-700">{comparisonData.originalDim}</span>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-emerald-200">
+                  <span className="text-[10px] text-emerald-600 font-bold block">Dimensi Maks</span>
+                  <span className="font-mono font-black text-emerald-800">{comparisonData.compressedDim}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Upload Zone */}

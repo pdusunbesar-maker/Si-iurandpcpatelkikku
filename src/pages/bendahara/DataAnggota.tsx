@@ -25,6 +25,7 @@ import {
   KeyRound,
   Lock,
   Settings2,
+  FileText,
 } from 'lucide-react';
 import { PatelkiLogo } from '../../components/PatelkiLogo';
 import { PhotoUploader } from '../../components/PhotoUploader';
@@ -62,6 +63,7 @@ export const DataAnggota: React.FC = () => {
   const [passwordSavedToast, setPasswordSavedToast] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importPreview, setImportPreview] = useState<Omit<Member, 'id'>[]>([]);
+  const [exportToast, setExportToast] = useState<string | null>(null);
 
   // New/Edit form state
   const [formData, setFormData] = useState<Omit<Member, 'id'>>({
@@ -168,7 +170,12 @@ export const DataAnggota: React.FC = () => {
 
   // Export to Excel (.xlsx)
   const handleExportExcel = () => {
-    const exportData = members.map((m, index) => {
+    const targetMembers =
+      searchQuery.trim() || filterStatus !== 'semua' || filterInstansi !== 'semua'
+        ? filteredMembers
+        : members;
+
+    const exportData = targetMembers.map((m, index) => {
       const summary = getMemberDuesSummary(m.id);
       return {
         No: index + 1,
@@ -189,6 +196,87 @@ export const DataAnggota: React.FC = () => {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Anggota Patelki');
     XLSX.writeFile(workbook, `Daftar_Anggota_Patelki_Kayong_Utara_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Export to CSV (.csv) for Microsoft Excel & Google Sheets
+  const handleExportCSV = () => {
+    const targetMembers =
+      searchQuery.trim() || filterStatus !== 'semua' || filterInstansi !== 'semua'
+        ? filteredMembers
+        : members;
+
+    if (targetMembers.length === 0) {
+      alert('Tidak ada data anggota untuk diekspor.');
+      return;
+    }
+
+    const exportData = targetMembers.map((m, index) => {
+      const summary = getMemberDuesSummary(m.id);
+      return {
+        'No': index + 1,
+        'Nama Lengkap': m.nama,
+        'Gelar': m.gelar || '-',
+        'Nomor Anggota (NAP)': m.nap,
+        'No WhatsApp': m.noWa,
+        'Instansi / Unit Kerja': m.instansi || '-',
+        'Jabatan': m.jabatan || '-',
+        'Status Keanggotaan': m.status === 'aktif' ? 'AKTIF' : 'NONAKTIF',
+        'Tanggal Bergabung': m.tanggalBergabung || '-',
+        'Email': m.email || '-',
+        'Alamat': m.alamat || '-',
+        'Total Iuran Terbayar (Rp)': summary.totalPaid,
+        'Sisa Tunggakan (Rp)': summary.arrearsAmount,
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    // Include UTF-8 BOM (\uFEFF) for seamless opening in Excel and Google Sheets without encoding glitches
+    const csvContent = '\uFEFF' + XLSX.utils.sheet_to_csv(worksheet);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().split('T')[0];
+    const fileName = `Daftar_Anggota_Patelki_Kayong_Utara_${dateStr}.csv`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setExportToast(`Berhasil mengekspor ${targetMembers.length} data anggota ke ${fileName} (.csv)`);
+    setTimeout(() => {
+      setExportToast(null);
+    }, 4000);
+  };
+
+  // Download template CSV for import
+  const handleDownloadCsvTemplate = () => {
+    const templateData = [
+      {
+        'Nama': 'Siti Rahmawati',
+        'Gelar': 'A.Md.Kes',
+        'NAP': '61.11.025',
+        'No WhatsApp': '081234567890',
+        'Instansi': 'RSUD Sultan Muhammad Jamaludin I',
+        'Jabatan': 'ATLM Pelaksana',
+        'Status': 'aktif',
+        'Tanggal Bergabung': new Date().toISOString().split('T')[0],
+        'Email': 'siti.rahmawati@example.com',
+        'Alamat': 'Sukadana, Kab. Kayong Utara',
+      },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const csvContent = '\uFEFF' + XLSX.utils.sheet_to_csv(worksheet);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'Template_Import_Anggota_Patelki.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Excel File Upload Parser
@@ -280,10 +368,21 @@ export const DataAnggota: React.FC = () => {
           <button
             type="button"
             onClick={handleExportExcel}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Download data anggota ke format Excel (.xlsx)"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Export Excel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Download data anggota format CSV (.csv) untuk diolah di Excel atau Google Sheets"
+          >
+            <FileText className="w-4 h-4" />
+            Export CSV
           </button>
 
           <button
@@ -829,6 +928,16 @@ export const DataAnggota: React.FC = () => {
                 <p className="text-[11px] text-slate-500 mt-1">
                   Format kolom: Nama, Gelar, NAP, WhatsApp, Instansi, Jabatan
                 </p>
+                <div className="flex items-center justify-center gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadCsvTemplate}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Unduh Format Template CSV
+                  </button>
+                </div>
                 <input
                   type="file"
                   accept=".xlsx, .xls, .csv"
@@ -1048,6 +1157,21 @@ export const DataAnggota: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Export Toast Notification */}
+      {exportToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900 text-white text-xs font-bold rounded-2xl shadow-xl border border-teal-500/30 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{exportToast}</span>
+          <button
+            type="button"
+            onClick={() => setExportToast(null)}
+            className="ml-2 text-slate-400 hover:text-white p-0.5 rounded-md transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>

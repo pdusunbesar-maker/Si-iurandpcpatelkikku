@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { PatelkiLogo } from '../../components/PatelkiLogo';
 import {
   FileText,
@@ -118,6 +120,115 @@ export const LaporanTransparansi: React.FC = () => {
     window.print();
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    
+    // Header
+    doc.setFontSize(10);
+    doc.setTextColor(20, 83, 45); // emerald-800
+    doc.text('PERSATUAN AHLI TEKNOLOGI LABORATORIUM MEDIK INDONESIA (PATELKI)', 14, 15);
+    
+    doc.setFontSize(14);
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.text('DEWAN PENGURUS CABANG KABUPATEN KAYONG UTARA', 14, 22);
+    
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text(`Sekretariat: ${settings.address} | Kontak: ${settings.contactWa} | Email: ${settings.contactEmail}`, 14, 28);
+    
+    doc.setLineWidth(0.5);
+    doc.line(14, 32, 196, 32);
+
+    // Title
+    doc.setFontSize(12);
+    doc.setTextColor(15, 23, 42);
+    doc.text('LAPORAN KEUANGAN & TRANSPARANSI KAS ORGANISASI', 105, 40, { align: 'center' });
+    
+    doc.setFontSize(9);
+    doc.setTextColor(180, 83, 9); // amber-700
+    doc.text(`PERIODE: ${getPeriodLabel().toUpperCase()}`, 105, 46, { align: 'center' });
+
+    // Summary Table
+    const summaryRows = [
+      ['A. Saldo Awal Kas Periode', formatCurrency(initialBalance), 'Saldo kas awal pembukuan'],
+      ['B. Total Pemasukan Kas', formatCurrency(totalIncome), 'Iuran, donasi, & penerimaan'],
+      ['   - Penerimaan Iuran Anggota', formatCurrency(duesIncomeTotal), `Tarif ${formatCurrency(settings.monthlyFee)}/bln`],
+      ['   - Penerimaan Donasi & Sponsor', formatCurrency(donationIncomeTotal), 'Sumbangan terikat/bebas'],
+      ...(otherIncomeTotal > 0 ? [['   - Penerimaan Lain-Lain', formatCurrency(otherIncomeTotal), 'Non-iuran']] : []),
+      ['C. Total Pengeluaran Kas', formatCurrency(totalExpense), 'Operasional, ATK, baksos, dll.'],
+      ['   - Operasional & Kesekretariatan', formatCurrency(operasionalExpenseTotal), 'Operasional rutin'],
+      ['   - Bakti Sosial & Pengabdian', formatCurrency(baksosExpenseTotal), 'Pengabdian masyarakat'],
+      ...(seminarExpenseTotal > 0 ? [['   - Kegiatan Ilmiah & Seminar', formatCurrency(seminarExpenseTotal), 'Peningkatan kapasitas']] : []),
+      ...(dpwExpenseTotal > 0 ? [['   - Setoran DPW & Transport', formatCurrency(dpwExpenseTotal), 'Kewajiban organisasi']] : []),
+      ...(otherExpenseTotal > 0 ? [['   - Pengeluaran Lain-Lain', formatCurrency(otherExpenseTotal), 'Lain-lain']] : []),
+      ['D. Surplus / Defisit Bersih', formatCurrency(netSurplus), 'Total Masuk - Total Keluar'],
+      ['E. SALDO AKHIR KAS ORGANISASI', formatCurrency(finalBalance), 'Tersimpan di rekening resmi DPC'],
+    ];
+
+    (doc as any).autoTable({
+      startY: 52,
+      head: [['Pos Pembukuan Kas', 'Jumlah (Rp)', 'Keterangan Sumber / Pos']],
+      body: summaryRows,
+      theme: 'grid',
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+      bodyStyles: { fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { cellWidth: 45, halign: 'right' }, 2: { cellWidth: 57 } },
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY + 10;
+
+    // Detailed Transactions Table
+    const detailRows = filteredTransactions.map((t, idx) => [
+      idx + 1,
+      t.date,
+      t.category,
+      t.description,
+      t.type === 'income' ? formatCurrency(t.amount) : '—',
+      t.type === 'expense' ? formatCurrency(t.amount) : '—',
+    ]);
+
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text('II. RINCIAN BUKU KAS TRANSAKSI PERIODE INI', 14, finalY);
+
+    (doc as any).autoTable({
+      startY: finalY + 4,
+      head: [['No', 'Tanggal', 'Kategori', 'Uraian Transaksi', 'Masuk (Rp)', 'Keluar (Rp)']],
+      body: detailRows.length > 0 ? detailRows : [[{ content: 'Tidak ada transaksi kas pada periode terpilih ini.', colSpan: 6, styles: { halign: 'center', fontStyle: 'italic' } }]],
+      theme: 'grid',
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 22 }, 2: { cellWidth: 32 }, 3: { cellWidth: 64 }, 4: { cellWidth: 34, halign: 'right' }, 5: { cellWidth: 34, halign: 'right' } },
+    });
+
+    const signY = (doc as any).lastAutoTable.finalY + 15;
+    
+    if (signY > 250) {
+      doc.addPage();
+    }
+
+    const currentSignY = signY > 250 ? 30 : signY;
+
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Mengetahui & Menyetujui,', 25, currentSignY);
+    doc.text(`Sukadana, ${new Date().toLocaleDateString('id-ID')}`, 145, currentSignY);
+
+    doc.setFontSize(9);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Ketua DPC Patelki Kayong Utara', 25, currentSignY + 5);
+    doc.text('Bendahara DPC Patelki Kayong Utara', 135, currentSignY + 5);
+
+    doc.setFontSize(8);
+    doc.text(`( ${settings.ketuaName} )`, 28, currentSignY + 25);
+    doc.text(`NAP: ${settings.ketuaNap}`, 31, currentSignY + 29);
+
+    doc.text(`( ${settings.bendaharaName} )`, 143, currentSignY + 25);
+    doc.text(`NAP: ${settings.bendaharaNap}`, 146, currentSignY + 29);
+
+    doc.save(`Laporan_Keuangan_Transparansi_Patelki_${selectedYear}.pdf`);
+  };
+
   const handleExportExcel = () => {
     const summaryData = [
       { Keterangan: 'A. Saldo Awal Kas Periode', Nominal: initialBalance, Catatan: 'Saldo kas awal pembukuan' },
@@ -202,6 +313,15 @@ export const LaporanTransparansi: React.FC = () => {
           >
             <FileSpreadsheet className="w-4 h-4" />
             Export Excel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPDF}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-rose-700 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            Export PDF Resmi
           </button>
 
           <button
