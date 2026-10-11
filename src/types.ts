@@ -150,6 +150,7 @@ export interface AppSettings {
   waTemplateApproved: string;
   waTemplateReminder: string;
   waTemplateRejected: string;
+  welcomeModelPhotoUrl?: string;
 }
 
 export type ActivityLogCategory =

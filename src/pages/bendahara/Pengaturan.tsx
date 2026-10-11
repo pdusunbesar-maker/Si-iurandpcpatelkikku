@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { BankAccount } from '../../types';
 import {
@@ -30,10 +30,15 @@ import {
   Phone,
   MessageSquare,
   Send,
+  Camera,
+  Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { SUPABASE_SCHEMA_SQL } from '../../data/supabaseSchemaSql';
 import { PhotoUploader } from '../../components/PhotoUploader';
 import { normalizeSupabaseUrl } from '../../lib/supabase';
+import labModelImg from '../../assets/images/professional_lab_model_1791716854875.jpg';
+import { processImageFile } from '../../utils/imageUpload';
 
 export const Pengaturan: React.FC = () => {
   const {
@@ -127,6 +132,43 @@ export const Pengaturan: React.FC = () => {
   const [copiedSql, setCopiedSql] = useState(false);
   const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+
+  // Welcome Banner Model Photo state
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [bannerToast, setBannerToast] = useState('');
+  const bannerFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBannerPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingBanner(true);
+    setBannerToast('');
+    try {
+      const compressedDataUrl = await processImageFile(file, 1024, 0.85);
+
+      await updateSettings({ welcomeModelPhotoUrl: compressedDataUrl });
+      setBannerToast('✓ Foto model banner berhasil diperbarui!');
+      setTimeout(() => setBannerToast(''), 4000);
+    } catch (err: any) {
+      console.error('Gagal memproses foto model banner:', err);
+      alert('Gagal memproses foto: ' + (err.message || 'Format tidak didukung'));
+    } finally {
+      setIsUploadingBanner(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleResetBannerPhoto = async () => {
+    if (!confirm('Kembalikan foto model banner ke gambar default ATLM Patelki?')) return;
+    try {
+      await updateSettings({ welcomeModelPhotoUrl: '' });
+      setBannerToast('✓ Foto model banner dikembalikan ke default.');
+      setTimeout(() => setBannerToast(''), 3000);
+    } catch (err: any) {
+      alert('Gagal mengembalikan foto: ' + err.message);
+    }
+  };
 
   const handleConfirmReset = async () => {
     setIsResetting(true);
@@ -681,6 +723,108 @@ export const Pengaturan: React.FC = () => {
             <span className="text-[10px] text-center text-emerald-200/70">
               Tersimpan langsung & otomatis tersinkron ke Supabase.
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 2.6 Foto Model Banner Sambutan Dashboard */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-black text-slate-900">
+                  Foto Model Banner Sambutan (Welcome Section)
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                  Dashboard Utama
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Foto profesional yang tampil di panel sambutan atas Dashboard Bendahara dan Anggota (Otomatis dikompres maks 250KB / 1024px).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              ref={bannerFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleBannerPhotoChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => bannerFileInputRef.current?.click()}
+              disabled={isUploadingBanner}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            >
+              <Camera className="w-4 h-4" />
+              <span>{isUploadingBanner ? 'Mengompres & Menyimpan...' : 'Unggah Foto Baru'}</span>
+            </button>
+
+            {settings.welcomeModelPhotoUrl && (
+              <button
+                type="button"
+                onClick={handleResetBannerPhoto}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                title="Kembalikan ke foto default"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                <span>Reset Default</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {bannerToast && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-bold flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{bannerToast}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          {/* Preview Box */}
+          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border-2 border-slate-200 shadow-md group bg-slate-900">
+            <img
+              src={settings.welcomeModelPhotoUrl || labModelImg}
+              alt="Model Banner Sambutan"
+              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end p-3">
+              <span className="text-[11px] font-bold text-white bg-slate-900/80 px-2.5 py-1 rounded-lg backdrop-blur-sm border border-white/10">
+                {settings.welcomeModelPhotoUrl ? '★ Foto Kustom Terpasang' : 'Standar: Ahli Teknologi Lab Medik'}
+              </span>
+            </div>
+          </div>
+
+          {/* Information & Instructions */}
+          <div className="md:col-span-2 space-y-3 text-xs text-slate-600">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+              <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-emerald-600" />
+                Informasi & Petunjuk Unggah Foto Model:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                <li>
+                  Sistem secara otomatis menyesuaikan rasio, mengompres ukuran menjadi <strong>maksimal 250 KB</strong>, dan membatasi dimensi hingga <strong>1024px</strong> agar dashboard tetap ringan dan cepat dimuat.
+                </li>
+                <li>
+                  Gunakan foto beresolusi jelas dengan pose profesional (misalnya tenaga medis/laboratorium atau pengurus resmi).
+                </li>
+                <li>
+                  Foto ini akan langsung tampil di panel <em>Welcome Section</em> atas baik di akun Bendahara maupun akun seluruh Anggota.
+                </li>
+                <li>
+                  Jika Anda memiliki foto dari WhatsApp, <strong>simpan foto terlebih dahulu ke galeri/komputer</strong>, lalu klik tombol <em>Unggah Foto Baru</em> di atas atau langsung pada gambar banner di Dashboard.
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>

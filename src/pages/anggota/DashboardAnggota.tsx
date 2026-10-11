@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PaymentSubmission } from '../../types';
 import { ReceiptModal } from '../../components/ReceiptModal';
+import labModelImg from '../../assets/images/professional_lab_model_1791716854875.jpg';
 import {
   Send,
   CheckCircle2,
@@ -18,6 +19,8 @@ import {
   Phone,
   BookOpen,
   Printer,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 
 interface DashboardAnggotaProps {
@@ -88,8 +91,74 @@ export const DashboardAnggota: React.FC<DashboardAnggotaProps> = ({ onNavigate }
     s => s.memberId === currentMember.id || s.memberId === currentMember.nap || s.memberNap === currentMember.nap
   );
 
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const formattedDate = now.toLocaleDateString('id-ID', options);
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+      {/* Modern Welcome Section with Professional Lab Model */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white shadow-xl border border-emerald-500/20 p-6 sm:p-8 lg:p-10">
+        <div className="absolute -right-16 -top-16 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute right-1/3 -bottom-20 w-80 h-80 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide backdrop-blur-sm">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Portal Anggota DPC PATELKI KKU</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FFFAD3]"></span>
+              <span className="text-[#FFFAD3] font-semibold">{formattedDate}</span>
+            </div>
+
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+                Selamat Datang, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-[#FFFAD3]">{currentMember.nama}</span>
+              </h1>
+              <p className="text-sm sm:text-base text-emerald-100/90 font-medium italic">
+                “Senang melihat Anda kembali. Kontribusi iuran Anda memperkuat profesionalisme Ahli Teknologi Laboratorium Medik.”
+              </p>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl">
+              NAP: <strong className="text-amber-300 font-mono">{currentMember.nap || '-'}</strong> • Instansi: <strong className="text-white">{currentMember.instansi || '-'}</strong>. Lakukan pembayaran iuran bulanan, unggah bukti transfer, dan pantau status verifikasi dengan mudah.
+            </p>
+
+            <div className="pt-2 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => onNavigate('bayar')}
+                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 hover:scale-[1.02]"
+              >
+                <span>Bayar Iuran Sekarang</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onNavigate('matrix')}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl border border-white/20 backdrop-blur-sm transition-all"
+              >
+                Matrix Iuran Saya
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 flex justify-center lg:justify-end">
+            <div className="relative w-full max-w-[380px] sm:max-w-[420px] aspect-[4/3] sm:aspect-[16/11] lg:aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-400/30 group">
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent z-10"></div>
+              <img
+                src={settings.welcomeModelPhotoUrl || labModelImg}
+                alt="Ahli Teknologi Laboratorium Medik Profesional"
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
+              />
+              <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between bg-slate-950/80 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/10 text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
+                  <span className="font-bold text-white">Anggota Aktif</span>
+                </div>
+                <span className="text-[11px] text-[#FFFAD3] font-mono">{currentMember.status.toUpperCase()}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       {/* Real-time In-App Notification Alert / Toast Banner for Verified Payments */}
       {myNotifications.length > 0 && (
         <div className="bg-linear-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white p-4 sm:p-5 rounded-3xl shadow-lg border border-emerald-400/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-bounce-subtle">

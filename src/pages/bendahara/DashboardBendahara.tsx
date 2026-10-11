@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useDuesData } from '../../hooks/useDuesData';
+import labModelImg from '../../assets/images/professional_lab_model_1791716854875.jpg';
+import { processImageFile } from '../../utils/imageUpload';
 import {
   Wallet,
   ArrowDownLeft,
@@ -27,6 +29,9 @@ import {
   BarChart3,
   Percent,
   ShieldAlert,
+  Camera,
+  Upload,
+  RotateCcw,
 } from 'lucide-react';
 import { Member } from '../../types';
 import { DashboardTrendsChart } from '../../components/bendahara/DashboardTrendsChart';
@@ -69,7 +74,42 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
     formatCurrency,
     runDataAudit,
     runAutoSync,
+    updateSettings,
   } = useApp();
+
+  const modelFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingModelPhoto, setIsUploadingModelPhoto] = useState(false);
+  const [modelPhotoToast, setModelPhotoToast] = useState<string | null>(null);
+
+  const handleModelPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingModelPhoto(true);
+      const compressedDataUrl = await processImageFile(file, 1024, 0.85);
+      await updateSettings({ welcomeModelPhotoUrl: compressedDataUrl });
+      setModelPhotoToast('Foto model aplikasi berhasil diperbarui!');
+      setTimeout(() => setModelPhotoToast(null), 3500);
+    } catch (err: any) {
+      alert(err.message || 'Gagal memproses foto.');
+    } finally {
+      setIsUploadingModelPhoto(false);
+      if (modelFileInputRef.current) modelFileInputRef.current.value = '';
+    }
+  };
+
+  const handleResetModelPhoto = async () => {
+    if (confirm('Kembalikan foto model sambutan ke foto ATLM default?')) {
+      try {
+        await updateSettings({ welcomeModelPhotoUrl: '' });
+        setModelPhotoToast('Foto model dikembalikan ke foto ATLM default.');
+        setTimeout(() => setModelPhotoToast(null), 3000);
+      } catch (err: any) {
+        alert(err.message || 'Gagal mereset foto model.');
+      }
+    }
+  };
 
   const [auditResult, setAuditResult] = useState<{
     consistent: boolean;
@@ -225,40 +265,114 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
     }))
     .sort((a, b) => b.total - a.total);
 
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const formattedDate = now.toLocaleDateString('id-ID', options);
+
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-      {/* Top Banner with Org Branding */}
-      <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-emerald-900 via-emerald-800 to-slate-900 text-white p-6 sm:p-8 shadow-xl border border-emerald-700/40">
-        <div className="absolute right-0 top-0 translate-x-10 -translate-y-10 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -left-10 -bottom-10 w-72 h-72 bg-emerald-500/15 rounded-full blur-2xl pointer-events-none" />
+      {/* Modern Welcome Section with Professional Lab Model */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white shadow-xl border border-emerald-500/20 p-6 sm:p-8 lg:p-10">
+        {/* Decorative background glows */}
+        <div className="absolute -right-16 -top-16 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute right-1/3 -bottom-20 w-80 h-80 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider mb-3">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Dashboard Bendahara
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
+          {/* Left Column: Greeting & Description */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-bold tracking-wide backdrop-blur-sm">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>DPC PATELKI KABUPATEN KAYONG UTARA</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#FFFAD3]"></span>
+              <span className="text-[#FFFAD3] font-semibold">{formattedDate}</span>
             </div>
-            <h1 className="text-xl sm:text-3xl font-black tracking-tight text-white">
-              DPC PATELKI KABUPATEN KAYONG UTARA
-            </h1>
-            <p className="text-xs sm:text-sm text-emerald-100/90 mt-1 max-w-2xl leading-relaxed">
-              Monitoring kas keuangan, rekapitulasi iuran anggota ({settings.monthlyFee.toLocaleString('id-ID')}/bln), verifikasi transfer bukti, dan transparansi organisasi.
+
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white leading-tight">
+                Selamat Datang, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-[#FFFAD3]">{settings.bendaharaName || 'Bendahara DPC'}</span>
+              </h1>
+              <p className="text-sm sm:text-base text-emerald-100/90 font-medium italic">
+                “Senang melihat Anda kembali. Bersama mewujudkan tata kelola keuangan organisasi yang transparan & akuntabel.”
+              </p>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-xl">
+              Dashboard resmi Bendahara DPC PATELKI KKU. Pantau kas saat ini <strong className="text-amber-300 font-mono">{formatCurrency(cashBalance)}</strong>, kelola iuran wajib anggota ({formatCurrency(settings.monthlyFee)}/bln), verifikasi bukti transfer real-time, dan laporan keuangan transparan.
             </p>
+
+            <div className="pt-2 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => onNavigate('verifikasi')}
+                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 hover:scale-[1.02]"
+              >
+                <span>Verifikasi Pembayaran</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onNavigate('matrix')}
+                className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl border border-white/20 backdrop-blur-sm transition-all"
+              >
+                Lihat Matrix Iuran
+              </button>
+            </div>
           </div>
 
-          {/* Current Cash Card */}
-          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20 sm:min-w-[280px]">
-            <div className="flex items-center justify-between text-xs text-amber-300 font-semibold mb-1">
-              <span>Saldo Kas Saat Ini</span>
-              <Wallet className="w-4 h-4 text-amber-400" />
+          {/* Right Column: Adaptive Professional Lab Model Photo */}
+          <div className="lg:col-span-5 flex flex-col items-center lg:items-end">
+            <div className="relative w-full max-w-[380px] sm:max-w-[420px] aspect-[4/3] sm:aspect-[16/11] lg:aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-400/30 group">
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent z-10 pointer-events-none"></div>
+              <img
+                src={settings.welcomeModelPhotoUrl || labModelImg}
+                alt="Tenaga Laboratorium Medis Profesional PATELKI"
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
+              />
+
+              {/* Action Controls for Changing/Resetting Model Photo */}
+              <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                <input
+                  ref={modelFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleModelPhotoChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => modelFileInputRef.current?.click()}
+                  disabled={isUploadingModelPhoto}
+                  title="Unggah / Ganti Foto Model Aplikasi"
+                  className="px-2.5 py-1.5 bg-slate-900/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold backdrop-blur-md border border-white/20 transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                >
+                  <Camera className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{isUploadingModelPhoto ? 'Memproses...' : 'Ganti Foto'}</span>
+                </button>
+
+                {settings.welcomeModelPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleResetModelPhoto}
+                    title="Kembalikan ke Foto Default"
+                    className="p-1.5 bg-slate-900/80 hover:bg-rose-600 text-slate-200 hover:text-white rounded-lg text-xs backdrop-blur-md border border-white/20 transition-all shadow-md active:scale-95 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Floating professional badge */}
+              <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between bg-slate-950/80 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/10 text-xs pointer-events-none">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
+                  <span className="font-bold text-white">
+                    {settings.welcomeModelPhotoUrl ? 'Foto Model Kustom' : 'ATLM Profesional'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-[#FFFAD3] font-mono">DPC PATELKI KKU</span>
+              </div>
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">
-              {formatCurrency(cashBalance)}
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[11px] text-emerald-200">
-              <span>Status Pembukuan: Aktif</span>
-              <span className="text-amber-300 font-bold">100% Real-time</span>
-            </div>
+
+            <p className="text-[11px] text-emerald-200/70 mt-2 text-center lg:text-right">
+              💡 Klik <strong className="text-white font-semibold">Ganti Foto</strong> untuk memilih foto model dari perangkat Anda
+            </p>
           </div>
         </div>
       </div>
@@ -940,6 +1054,14 @@ export const DashboardBendahara: React.FC<DashboardBendaharaProps> = ({ onNaviga
           </button>
         </div>
       </div>
+
+      {/* Model Photo Toast Notification */}
+      {modelPhotoToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-emerald-500/30 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-semibold">{modelPhotoToast}</span>
+        </div>
+      )}
     </div>
   );
 };
