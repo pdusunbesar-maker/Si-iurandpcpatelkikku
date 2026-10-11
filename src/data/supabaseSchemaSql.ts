@@ -143,11 +143,13 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
     wa_template_approved TEXT,
     wa_template_reminder TEXT,
     wa_template_rejected TEXT,
+    welcome_model_photo_url TEXT,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Migrasi tambahan kolom & relasi aman jika tabel sudah ada sebelumnya
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS initial_balance NUMERIC DEFAULT 0;
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS welcome_model_photo_url TEXT;
 
 -- ==============================================================
 -- KEAMANAN & ROW LEVEL SECURITY (RLS)

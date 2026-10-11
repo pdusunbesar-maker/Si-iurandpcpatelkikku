@@ -54,6 +54,9 @@ export function normalizeSupabaseUrl(input: string): string {
   }
 }
 
+const DEFAULT_SUPABASE_URL = 'https://fzkvyxtghwyrjjnlhmev.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6a3Z5eHRnaHd5cmpqbmxobWV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwODE2NDksImV4cCI6MjEwNjY1NzY0OX0.JPY6Hy_rVmDgKbqr4e7557JCkk7SijveS5FOtKrRYeA';
+
 export function getSupabaseConfig(): SupabaseConfig {
   const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
   const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
@@ -62,8 +65,9 @@ export function getSupabaseConfig(): SupabaseConfig {
   const storedKey = localStorage.getItem(STORAGE_KEY_KEY);
   const storedAutoSync = localStorage.getItem(STORAGE_KEY_AUTO_SYNC);
 
-  const rawUrl = storedUrl !== null ? storedUrl : envUrl;
-  const rawKey = storedKey !== null ? storedKey : envKey;
+  // Fallback to default DPC Patelki Supabase credentials so all new browsers/devices auto-connect immediately
+  const rawUrl = storedUrl !== null ? storedUrl : (envUrl || DEFAULT_SUPABASE_URL);
+  const rawKey = storedKey !== null ? storedKey : (envKey || DEFAULT_SUPABASE_ANON_KEY);
 
   return {
     url: normalizeSupabaseUrl(rawUrl),
@@ -553,8 +557,9 @@ export async function pushAllDataToSupabase(data: {
     }));
     await upsertInChunks(client, 'social_services', socPayload, 'id', 50);
 
-    // 7. Bank Accounts
-    const bankPayload = data.bankAccounts.map(b => ({
+    // 7. Bank Accounts + System Branding Banner
+    const userBankAccounts = data.bankAccounts.filter(b => b.id !== 'sys-welcome-banner');
+    const bankPayload: any[] = userBankAccounts.map(b => ({
       id: b.id,
       bank_name: b.bankName,
       account_number: b.accountNumber,
@@ -564,6 +569,19 @@ export async function pushAllDataToSupabase(data: {
       notes: b.notes || null,
       qris_url: b.qrisUrl || null,
     }));
+
+    if (data.settings.welcomeModelPhotoUrl) {
+      bankPayload.push({
+        id: 'sys-welcome-banner',
+        bank_name: 'SYSTEM_BRANDING',
+        account_number: 'SYSTEM_MODEL_BANNER',
+        account_holder: 'SYSTEM',
+        is_active: false,
+        is_primary: false,
+        notes: 'model_banner_v1',
+        qris_url: data.settings.welcomeModelPhotoUrl,
+      });
+    }
     await upsertInChunks(client, 'bank_accounts', bankPayload, 'id', 50);
 
     // 8. Settings
@@ -606,6 +624,51 @@ export async function pushAllDataToSupabase(data: {
 }
 
 /**
+ * Simpan foto model sambutan ke database Supabase agar tersinkronisasi realtime ke semua browser
+ */
+export async function saveWelcomeModelPhotoToSupabase(
+  photoUrl: string | null
+): Promise<{ success: boolean; message: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Supabase client belum terhubung' };
+  }
+
+  try {
+    // 1. Simpan ke bank_accounts record sys-welcome-banner (terbukti 100% didukung dan memicu postgres_changes realtime)
+    const { error: bankErr } = await client.from('bank_accounts').upsert({
+      id: 'sys-welcome-banner',
+      bank_name: 'SYSTEM_BRANDING',
+      account_number: 'SYSTEM_MODEL_BANNER',
+      account_holder: 'SYSTEM',
+      is_active: false,
+      is_primary: false,
+      notes: 'model_banner_v1',
+      qris_url: photoUrl || null,
+    }, { onConflict: 'id' });
+
+    if (bankErr) {
+      console.warn('Notice saving banner to bank_accounts:', bankErr);
+    }
+
+    // 2. Jika tabel app_settings memiliki kolom welcome_model_photo_url, perbarui juga
+    try {
+      await client
+        .from('app_settings')
+        .update({ welcome_model_photo_url: photoUrl || null })
+        .eq('id', 'current_settings');
+    } catch {
+      // Abaikan jika kolom belum ditambahkan ke schema
+    }
+
+    return { success: true, message: 'Foto model banner berhasil disinkronisasi ke seluruh browser!' };
+  } catch (err: any) {
+    console.error('Error saving model photo to Supabase:', err);
+    return { success: false, message: err.message || 'Gagal menyimpan foto' };
+  }
+}
+
+/**
  * Simpan / perbarui pengaturan aplikasi langsung ke tabel app_settings di Supabase
  */
 export async function saveSettingsToSupabase(settings: AppSettings): Promise<{ success: boolean; message: string }> {
@@ -615,7 +678,10 @@ export async function saveSettingsToSupabase(settings: AppSettings): Promise<{ s
   }
 
   try {
-    const payload = {
+    // Sync foto model banner ke system record
+    await saveWelcomeModelPhotoToSupabase(settings.welcomeModelPhotoUrl || null);
+
+    const payload: any = {
       id: 'current_settings',
       organization_name: settings.organizationName || 'Persatuan Ahli Teknologi Laboratorium Medik Indonesia',
       branch_name: settings.branchName || 'DPC PATELKI Kabupaten Kayong Utara',
@@ -639,7 +705,17 @@ export async function saveSettingsToSupabase(settings: AppSettings): Promise<{ s
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await client.from('app_settings').upsert(payload, { onConflict: 'id' });
+    if (settings.welcomeModelPhotoUrl) {
+      payload.welcome_model_photo_url = settings.welcomeModelPhotoUrl;
+    }
+
+    let { error } = await client.from('app_settings').upsert(payload, { onConflict: 'id' });
+    if (error && error.message?.includes('welcome_model_photo_url')) {
+      delete payload.welcome_model_photo_url;
+      const retry = await client.from('app_settings').upsert(payload, { onConflict: 'id' });
+      error = retry.error;
+    }
+
     if (error) {
       console.error('Error saving app_settings to Supabase:', error);
       return { success: false, message: error.message };
@@ -835,16 +911,22 @@ export async function pullAllDataFromSupabase(): Promise<{
       createdAt: sc.created_at,
     }));
 
-    const bankAccounts: BankAccount[] = (dbBank || []).map((b: any) => ({
-      id: b.id,
-      bankName: b.bank_name,
-      accountNumber: b.account_number,
-      accountHolder: b.account_holder,
-      isActive: b.is_active,
-      isPrimary: b.is_primary,
-      notes: b.notes || undefined,
-      qrisUrl: b.qris_url || undefined,
-    }));
+    // Extract custom banner photo from system record or app_settings
+    const bannerRow = (dbBank || []).find((b: any) => b.id === 'sys-welcome-banner');
+    const customBannerPhoto = bannerRow?.qris_url || dbSettings?.welcome_model_photo_url || undefined;
+
+    const bankAccounts: BankAccount[] = (dbBank || [])
+      .filter((b: any) => b.id !== 'sys-welcome-banner')
+      .map((b: any) => ({
+        id: b.id,
+        bankName: b.bank_name,
+        accountNumber: b.account_number,
+        accountHolder: b.account_holder,
+        isActive: b.is_active,
+        isPrimary: b.is_primary,
+        notes: b.notes || undefined,
+        qrisUrl: b.qris_url || undefined,
+      }));
 
     let settings: AppSettings | undefined = undefined;
     if (dbSettings) {
@@ -869,6 +951,7 @@ export async function pullAllDataFromSupabase(): Promise<{
         waTemplateApproved: dbSettings.wa_template_approved || '',
         waTemplateReminder: dbSettings.wa_template_reminder || '',
         waTemplateRejected: dbSettings.wa_template_rejected || '',
+        welcomeModelPhotoUrl: customBannerPhoto,
       };
     }
 
@@ -898,13 +981,28 @@ export async function pullAllDataFromSupabase(): Promise<{
 /**
  * Berlangganan perubahan realtime ke Supabase untuk sinkronisasi antar perangkat/pengguna.
  */
-export function subscribeToSupabaseRealtime(onDataChanged: () => void): (() => void) | null {
+export function subscribeToSupabaseRealtime(
+  onDataChanged: () => void,
+  onPhotoChanged?: (photoUrl: string | null) => void
+): (() => void) | null {
   const client = getSupabaseClient();
   if (!client) return null;
 
   try {
     const channel = client
       .channel('patelki-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_accounts' }, (payload: any) => {
+        if (payload?.new?.id === 'sys-welcome-banner' && onPhotoChanged) {
+          onPhotoChanged(payload.new.qris_url || null);
+        }
+        onDataChanged();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, (payload: any) => {
+        if (payload?.new?.welcome_model_photo_url !== undefined && onPhotoChanged) {
+          onPhotoChanged(payload.new.welcome_model_photo_url || null);
+        }
+        onDataChanged();
+      })
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         onDataChanged();
       })

@@ -39,6 +39,7 @@ import {
   upsertToSupabase,
   updateInSupabase,
   saveSettingsToSupabase,
+  saveWelcomeModelPhotoToSupabase,
 } from '../lib/supabase';
 import {
   normalizePhoneNumber,
@@ -475,45 +476,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [paymentSubmissions, members]);
 
+  // Inter-tab / local browser instant synchronization via BroadcastChannel
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) return;
+    const channel = new BroadcastChannel('patelki_tab_sync');
+
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'WELCOME_PHOTO_UPDATED') {
+        const photoUrl = event.data.photoUrl;
+        setSettings(prev => ({
+          ...prev,
+          welcomeModelPhotoUrl: photoUrl || undefined,
+        }));
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, []);
+
   // Real-time sync subscription across users/devices - Single Source of Truth
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
 
-    const unsubscribe = subscribeToSupabaseRealtime(() => {
-      pullAllDataFromSupabase().then(res => {
-        if (res.success && res.data) {
-          const cleanMembers = (res.data.members || []).filter(m => !isDemoId(m.id));
-          const cleanTransactions = (res.data.transactions || []).filter(t => !isDemoId(t.id));
-          const cleanDonations = (res.data.donations || []).filter(d => !isDemoId(d.id));
-          const cleanSocial = (res.data.socialServices || []).filter(s => !isDemoId(s.id));
+    const unsubscribe = subscribeToSupabaseRealtime(
+      () => {
+        pullAllDataFromSupabase().then(res => {
+          if (res.success && res.data) {
+            const cleanMembers = (res.data.members || []).filter(m => !isDemoId(m.id));
+            const cleanTransactions = (res.data.transactions || []).filter(t => !isDemoId(t.id));
+            const cleanDonations = (res.data.donations || []).filter(d => !isDemoId(d.id));
+            const cleanSocial = (res.data.socialServices || []).filter(s => !isDemoId(s.id));
 
-          setMembers(cleanMembers);
-          setDuesRecords(res.data.duesRecords || []);
-          setPaymentSubmissions(res.data.paymentSubmissions || []);
-          setTransactions(cleanTransactions);
-          setDonations(cleanDonations);
-          setSocialServices(cleanSocial);
-          if (res.data.bankAccounts !== undefined) {
-            setBankAccounts(res.data.bankAccounts);
-          }
-          if (res.data.settings) {
-            setSettings(res.data.settings);
-          }
-
-          // Synchronize logged in member with latest Supabase record
-          const savedMemberId = localStorage.getItem('patelki_member_id');
-          if (savedMemberId) {
-            const fresh = cleanMembers.find(m => m.id === savedMemberId);
-            if (fresh) {
-              setCurrentMember(fresh);
+            setMembers(cleanMembers);
+            setDuesRecords(res.data.duesRecords || []);
+            setPaymentSubmissions(res.data.paymentSubmissions || []);
+            setTransactions(cleanTransactions);
+            setDonations(cleanDonations);
+            setSocialServices(cleanSocial);
+            if (res.data.bankAccounts !== undefined) {
+              setBankAccounts(res.data.bankAccounts);
             }
+            if (res.data.settings) {
+              setSettings(res.data.settings);
+            }
+
+            // Synchronize logged in member with latest Supabase record
+            const savedMemberId = localStorage.getItem('patelki_member_id');
+            if (savedMemberId) {
+              const fresh = cleanMembers.find(m => m.id === savedMemberId);
+              if (fresh) {
+                setCurrentMember(fresh);
+              }
+            }
+            setIsSupabaseActive(true);
           }
-          setIsSupabaseActive(true);
-        }
-      }).catch(err => {
-        console.warn('Realtime sync pull error:', err);
-      });
-    });
+        }).catch(err => {
+          console.warn('Realtime sync pull error:', err);
+        });
+      },
+      (photoUrl: string | null) => {
+        // Instant sub-second update across all connected browsers when model photo is changed
+        setSettings(prev => ({
+          ...prev,
+          welcomeModelPhotoUrl: photoUrl || undefined,
+        }));
+      }
+    );
 
     return () => {
       if (unsubscribe) unsubscribe();
@@ -2025,12 +2055,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }, 0);
       }
 
+      // Broadcast to any open tabs in the same browser instantly
+      if (newSettings.welcomeModelPhotoUrl !== undefined) {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          try {
+            const ch = new BroadcastChannel('patelki_tab_sync');
+            ch.postMessage({
+              type: 'WELCOME_PHOTO_UPDATED',
+              photoUrl: newSettings.welcomeModelPhotoUrl || null,
+            });
+            ch.close();
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
       return updated;
     });
 
     // Directly save to Supabase app_settings table without requiring full sync
     if (isSupabaseActive || isSupabaseConfigured()) {
       try {
+        if (newSettings.welcomeModelPhotoUrl !== undefined) {
+          await saveWelcomeModelPhotoToSupabase(newSettings.welcomeModelPhotoUrl || null);
+        }
         const res = await saveSettingsToSupabase(updatedSettings);
         if (!res.success) {
           console.error('Failed saving settings to Supabase:', res.message);

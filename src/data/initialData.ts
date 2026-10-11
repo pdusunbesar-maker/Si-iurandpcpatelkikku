@@ -50,7 +50,8 @@ export const INITIAL_SETTINGS: AppSettings = {
   ],
   waTemplateApproved: 'Yth. Rekan Sejawat [NAMA] ([NAP]),\n\nPembayaran iuran DPC Patelki Kayong Utara Anda untuk periode [PERIODE] sebesar [NOMINAL] telah BERHASIL DIVERIFIKASI dan DISETUJUI oleh Bendahara DPC.\n\nTerima kasih atas kepatuhan dan kontribusi aktif Anda dalam memajukan profesi ATLM Kayong Utara.\n\nSalam Hangat,\nBendahara DPC Patelki Kayong Utara\n[BENDAHARA]',
   waTemplateReminder: 'Yth. Rekan Sejawat [NAMA] ([NAP]),\n\nBerdasarkan data pembukuan DPC Patelki Kayong Utara per [TANGGAL], tercatat kewajiban iuran Anda yang belum terselesaikan sebesar [NOMINAL] untuk periode [PERIODE].\n\nMohon kesediaannya untuk melakukan pembayaran melalui transfer ke rekening resmi DPC:\n- Bank Kalbar: 5021-0899-2311 (a/n DPC PATELKI KAYONG UTARA)\n- BRI: 0342-01-002891-53-4 (a/n DPC PATELKI KAB KAYONG UTARA)\n\nSetelah transfer, silakan unggah bukti di aplikasi iuran. Terima kasih atas kerja samanya.\n\nSalam Hangat,\nBendahara DPC Patelki Kayong Utara',
-  waTemplateRejected: 'Yth. Rekan Sejawat [NAMA] ([NAP]),\n\nPengajuan pembayaran iuran Anda untuk periode [PERIODE] sebesar [NOMINAL] BELUM DAPAT DISETUJUI oleh Bendahara dengan catatan:\n"[ALASAN]"\n\nSilakan periksa kembali bukti transfer Anda atau hubungi Bendahara untuk konfirmasi lebih lanjut. Terima kasih.\n\nSalam Hangat,\nBendahara DPC Patelki Kayong Utara'
+  waTemplateRejected: 'Yth. Rekan Sejawat [NAMA] ([NAP]),\n\nPengajuan pembayaran iuran Anda untuk periode [PERIODE] sebesar [NOMINAL] BELUM DAPAT DISETUJUI oleh Bendahara dengan catatan:\n"[ALASAN]"\n\nSilakan periksa kembali bukti transfer Anda atau hubungi Bendahara untuk konfirmasi lebih lanjut. Terima kasih.\n\nSalam Hangat,\nBendahara DPC Patelki Kayong Utara',
+  welcomeModelPhotoUrl: undefined,
 };
 
 /**
